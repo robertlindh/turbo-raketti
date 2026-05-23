@@ -276,13 +276,23 @@ export class App {
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         const initials = (input?.value ?? "AAA").toUpperCase().slice(0, 3) || "AAA";
-        let entry: { initials: string; value: number; loser?: number };
+        let entry: {
+          initials: string; value: number; loser?: number;
+          gateTimes?: number[];
+          replay?: Array<{ t: number; x: number; y: number; r: number }>;
+        };
         if (result.mode === "time-trial" || result.mode === "race") {
           entry = { initials, value: result.timeSeconds };
         } else if (result.mode === "wave") {
           entry = { initials, value: result.survivedSeconds };
         } else {
           entry = { initials, value: result.winnerScore, loser: result.loserScore };
+        }
+        // Race-style modes: ship the captured telemetry along with the
+        // highscore so future ghost-races have full data.
+        if ("telemetry" in result && result.telemetry) {
+          entry.gateTimes = result.telemetry.gateTimes;
+          entry.replay = result.telemetry.replay;
         }
         addScore(result.levelId, result.mode, entry);
         // Re-render so the new score is highlighted in the list.

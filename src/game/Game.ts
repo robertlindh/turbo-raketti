@@ -48,11 +48,19 @@ export interface GameConfig {
   onGameEnd?: (result: GameResult) => void;
 }
 
+/** Ghost-race telemetry the Game ships back with a finished result so the
+ *  postgame can include it in the highscore submission. Same shape as the
+ *  saved HighScore's `replay` and `gateTimes` fields. */
+export interface RaceTelemetry {
+  gateTimes: number[];
+  replay: Array<{ t: number; x: number; y: number; r: number }>;
+}
+
 export type GameResult =
-  | { mode: "time-trial"; levelId: string; timeSeconds: number }
+  | { mode: "time-trial"; levelId: string; timeSeconds: number; telemetry?: RaceTelemetry }
   | { mode: "duel"; levelId: string; winnerIndex: 0 | 1; winnerScore: number; loserScore: number }
-  | { mode: "race"; levelId: string; winnerIndex: 0 | 1; timeSeconds: number; loserLaps: number }
-  | { mode: "wave"; levelId: string; score: number; survivedSeconds: number };
+  | { mode: "race"; levelId: string; winnerIndex: 0 | 1; timeSeconds: number; loserLaps: number; telemetry?: RaceTelemetry }
+  | { mode: "wave"; levelId: string; score: number; survivedSeconds: number; telemetry?: RaceTelemetry };
 
 /** Load a draft level saved by the level editor. Falls back to Metarola if
  *  the storage entry is missing or malformed — keeps the test-play link
@@ -65,6 +73,12 @@ function loadDraftLevel(): Level {
     console.warn("loadDraftLevel failed:", err);
   }
   return getLevelById("metarola");
+}
+
+/** Round a number to 3 decimals — cuts JSON payload size for replay
+ *  samples without any visible loss of fidelity. */
+function round3(n: number): number {
+  return Math.round(n * 1000) / 1000;
 }
 
 /** Standard ray-casting point-in-polygon test. */
@@ -189,6 +203,15 @@ export class Game {
   private waveScore = 0;
   /** Wave mode: countdown to the next bot spawn (seconds). */
   private waveSpawnTimer = 1.5;
+  /** Elapsed seconds at each checkpoint pass, in the order P1 took them.
+   *  Captured for race-style modes so we can save split times alongside
+   *  the highscore. */
+  private gatePassTimes: number[] = [];
+  /** 10Hz position telemetry for P1. Saved with each completed time-trial
+   *  / race run for future ghost-race playback. */
+  private replaySamples: Array<{ t: number; x: number; y: number; r: number }> = [];
+  /** Seconds since the last replay sample was pushed. */
+  private replayAccum = 0;
   private shipHandleToPlayer = new Map<number, number>();
   private accumulator = 0;
   private lastTime = 0;
@@ -750,7 +773,10 @@ export class Game {
       this.updateCountdown(dt);
     } else {
       if (this.goLinger > 0) this.updateGoLinger(dt);
-      if (!this.matchEnded) this.matchElapsed += dt;
+      if (!this.matchEnded) {
+        this.matchElapsed += dt;
+        this.sampleReplay(dt);
+      }
     }
 
     this.accumulator += dt;
@@ -765,12 +791,40 @@ export class Game {
     this.checkWinCondition();
   };
 
+  /** Sample P1's position + rotation at 10Hz so a completed race-style
+   *  run can be saved as ghost-replay data. Only sampled when the local
+   *  player is alive and time-trial / race / wave mode is active —
+   *  duel doesn't need replays. */
+  private sampleReplay(dt: number): void {
+    if (this.config.mode === "duel") return;
+    this.replayAccum += dt;
+    if (this.replayAccum < 0.1) return;
+    this.replayAccum = 0;
+    const p1 = this.players[0];
+    if (!p1 || !p1.alive || !p1.ship) return;
+    const pos = p1.ship.body.translation();
+    const rot = p1.ship.body.rotation();
+    this.replaySamples.push({
+      t: round3(this.matchElapsed),
+      x: round3(pos.x),
+      y: round3(pos.y),
+      r: round3(rot),
+    });
+  }
+
   /** Decide whether the match is over.  Time-trial finishes the moment P1
    *  completes their target lap count; duel finishes when either player
    *  reaches DUEL_TARGET_FRAGS. Called every frame but no-ops once the
    *  match has already ended. */
   private checkWinCondition(): void {
     if (this.matchEnded) return;
+    // Snapshot of the run's telemetry, attached to race-style results so
+    // the postgame can ship it to Firebase for future ghost-races.
+    const telemetry = (): RaceTelemetry => ({
+      gateTimes: this.gatePassTimes.slice(),
+      replay: this.replaySamples.slice(),
+    });
+
     if (this.config.mode === "wave") {
       // Wave / combat solo — race to take down WAVE_TARGET_KILLS bots as
       // fast as possible. Match ends when the target kill count is hit
@@ -783,6 +837,7 @@ export class Game {
           levelId: this.levelId,
           score: this.waveScore,
           survivedSeconds: this.matchElapsed,
+          telemetry: telemetry(),
         });
       }
       return;
@@ -794,6 +849,7 @@ export class Game {
           mode: "time-trial",
           levelId: this.levelId,
           timeSeconds: this.matchElapsed,
+          telemetry: telemetry(),
         });
       }
     } else if (this.config.mode === "race") {
@@ -811,6 +867,10 @@ export class Game {
             winnerIndex,
             timeSeconds: this.matchElapsed,
             loserLaps: this.racing.laps[loserIdx] ?? 0,
+            // Only P1's telemetry is captured; for 2P race that's the
+            // local pilot. Ghost-races still work because we have a
+            // recording of at least one perspective.
+            telemetry: telemetry(),
           });
           return;
         }
@@ -1114,6 +1174,10 @@ export class Game {
       // Per-gate FX: each passed checkpoint blows up in the racer's
       // colour with a chime so the player feels the snap of clearing it.
       for (const hit of progress.hits) {
+        // Capture split times for P1 (replay/ghost-race data).
+        if (hit.playerIndex === 0) {
+          this.gatePassTimes.push(round3(this.matchElapsed));
+        }
         this.particles.explode(hit.cpX, hit.cpY, 24, hit.color, {
           speedMin: 6, speedMax: 24, lifeMin: 0.25, lifeMax: 0.5,
           sizeMin: 1.0, sizeMax: 1.8,

@@ -20,6 +20,17 @@
 
 export type GameMode = "time-trial" | "duel" | "race" | "wave";
 
+/** A single ghost-race telemetry sample. Kept small so 10Hz sampling of
+ *  a 60s run only adds ~7 KB per highscore entry. */
+export interface ReplaySample {
+  /** Seconds since match start. */
+  t: number;
+  x: number;
+  y: number;
+  /** Ship rotation in radians. */
+  r: number;
+}
+
 export interface HighScore {
   /** 3-letter initials. */
   initials: string;
@@ -29,6 +40,13 @@ export interface HighScore {
   loser?: number;
   /** ISO date string at the moment the score was recorded. */
   date: string;
+  /** Race / time-trial / wave: elapsed seconds at each checkpoint pass,
+   *  in the order the player took them. Used for split times + ghost
+   *  pacing. Undefined for duel / older entries. */
+  gateTimes?: number[];
+  /** Race / time-trial: 10Hz ship telemetry for ghost-replay rendering.
+   *  Undefined for non-race modes and for older saved entries. */
+  replay?: ReplaySample[];
 }
 
 const STORAGE_KEY = "tr.highscores.v1";
@@ -150,14 +168,16 @@ async function pushScoreToFirebase(
     const db = getDb();
     if (!db) return;
     const { ref, push } = await import("firebase/database");
-    // Realtime Database refuses `undefined` properties — strip the
-    // optional `loser` field if it's not present.
+    // Realtime Database refuses `undefined` properties — strip optional
+    // fields if they're not present.
     const clean: Record<string, unknown> = {
       initials: entry.initials,
       value: entry.value,
       date: entry.date,
     };
     if (entry.loser !== undefined) clean.loser = entry.loser;
+    if (entry.gateTimes && entry.gateTimes.length > 0) clean.gateTimes = entry.gateTimes;
+    if (entry.replay && entry.replay.length > 0) clean.replay = entry.replay;
     await push(ref(db, `/scores/${levelId}/${mode}`), clean);
   } catch (err) {
     console.warn("Firebase push failed:", err);
