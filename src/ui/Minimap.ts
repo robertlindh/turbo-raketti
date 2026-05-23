@@ -47,7 +47,7 @@ export class Minimap {
     this.canvas.style.cssText = `
       position: fixed;
       bottom: 12px;
-      right: 12px;
+      left: 12px;
       z-index: 60;
       background: rgba(8, 6, 16, 0.78);
       border: 1px solid #2a2a36;

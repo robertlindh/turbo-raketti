@@ -133,19 +133,30 @@ export const tropulus: Level = {
   decorations: [
     // Far left cluster — a small hamlet near the left mountain.
     { type: "crystal", x: -92, y: 52 },
+    { type: "plant",   x: -86, y: 54 },
     { type: "crystal", x: -80, y: 54 },
+    { type: "rock",    x: -76, y: 53 },
     { type: "crystal", x: -72, y: 50 },
-    // Pine area — a single lantern at the foot of the tree.
+    // Pine area — a single lantern at the foot of the tree, plants around.
+    { type: "plant",   x: -50, y: 54 },
     { type: "crystal", x: -56, y: 54 },
+    { type: "plant",   x: -36, y: 56 },
+    { type: "rock",    x: -28, y: 56 },
     // Between the pine and the hut.
     { type: "crystal", x: -20, y: 54 },
+    { type: "plant",   x: -12, y: 56 },
     { type: "crystal", x: -4, y: 52 },
     { type: "crystal", x: 12, y: 54 },
+    { type: "plant",   x: 20, y: 56 },
     // The mökki's own warm-lit windows.
     { type: "crystal", x: 38, y: 48 },
     { type: "crystal", x: 50, y: 48 },
-    // Haystack neighbours.
+    // Haystack neighbours — rocks + bones (echoes of farm life).
+    { type: "rock",    x: 60, y: 54 },
     { type: "crystal", x: 68, y: 52 },
+    { type: "plant",   x: 84, y: 55 },
     { type: "crystal", x: 100, y: 50 },
+    // A welcoming signpost near the right spawn.
+    { type: "sign",    x: 90, y: -36 },
   ],
 };

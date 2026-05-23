@@ -134,12 +134,20 @@ export const ekolos: Level = {
     { x: 80, y: -40, angle: -Math.PI / 2 },
   ],
   decorations: [
-    // Luminescent flora along the floor.
+    // Luminescent flora along the floor, mixed with green plants and a
+    // few rocks so the cave has a lived-in jungle feel.
     { type: "crystal", x: -88, y: 58 },
+    { type: "plant",   x: -80, y: 58.5 },
     { type: "crystal", x: -72, y: 59.2 },
+    { type: "rock",    x: -56, y: 60 },
+    { type: "plant",   x: -40, y: 60.5 },
     { type: "crystal", x: -16, y: 59.2 },
+    { type: "plant",   x: -4, y: 60.5 },
     { type: "crystal", x: 16, y: 59.2 },
+    { type: "rock",    x: 28, y: 60 },
+    { type: "plant",   x: 36, y: 60.5 },
     { type: "crystal", x: 44, y: 58 },
+    { type: "plant",   x: 64, y: 59 },
     { type: "crystal", x: 84, y: 58 },
     // A few clinging to ledges on the walls.
     { type: "crystal", x: -100, y: 16 },
@@ -150,5 +158,7 @@ export const ekolos: Level = {
     { type: "crystal", x: -64, y: -56.8 },
     { type: "crystal", x: -8, y: -59.2 },
     { type: "crystal", x: 68, y: -58 },
+    // Warning sign by the central boulder cluster.
+    { type: "sign",    x: -24, y: -2 },
   ],
 };

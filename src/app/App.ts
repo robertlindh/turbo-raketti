@@ -17,7 +17,7 @@ import {
   isMusicEnabled, setMusicEnabled, prebuildMusicBuffer,
 } from "../audio/Audio";
 
-type Scene = "loading" | "menu" | "game" | "postgame";
+type Scene = "loading" | "menu" | "game" | "postgame" | "instructions";
 
 export class App {
   private screens: HTMLElement;
@@ -155,6 +155,15 @@ export class App {
     void startMenuMusic();
   }
 
+  private showInstructions(): void {
+    this.setScene("instructions");
+    this.screens.innerHTML = renderInstructions();
+    this.screens.querySelector<HTMLButtonElement>("#back-to-menu")
+      ?.addEventListener("click", () => this.showMenu());
+    this.focusFirst();
+    this.startMenuGamepadNav();
+  }
+
   private startGame(): void {
     this.persistSelection();
     // Silence the menu loop — the game's own SFX takes over from here.
@@ -216,6 +225,8 @@ export class App {
         this.persistSelection();
         void e; // no-op; default action proceeds
       });
+    this.screens.querySelector<HTMLButtonElement>("#open-instructions")
+      ?.addEventListener("click", () => this.showInstructions());
     this.screens.querySelector<HTMLButtonElement>("#music-toggle")
       ?.addEventListener("click", () => {
         const next = !isMusicEnabled();
@@ -467,6 +478,7 @@ function renderMenu(app: App): string {
       </div>
 
       <div class="menu-footer">
+        <button id="open-instructions" class="link-btn" type="button">📖 Instruktioner</button>
         <a id="open-editor" class="link-btn" href="${import.meta.env.BASE_URL}editor.html">Level editor →</a>
         <button id="music-toggle" class="link-btn" type="button" aria-pressed="${isMusicEnabled()}">
           ${isMusicEnabled() ? "♪ Music: ON" : "♪ Music: OFF"}
@@ -553,6 +565,72 @@ function renderPostgame(
       <div class="postgame-actions">
         <button id="play-again">Spela igen</button>
         <button id="back-to-menu" class="primary">Till menyn</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderInstructions(): string {
+  return `
+    <div class="screen instructions-screen">
+      <h1>Instruktioner</h1>
+
+      <section>
+        <h2>Kontroller</h2>
+        <table class="ctrl-table">
+          <thead>
+            <tr><th></th><th>P1</th><th>P2</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Thrust</td><td><kbd>↑</kbd></td><td><kbd>W</kbd></td></tr>
+            <tr><td>Rotera</td><td><kbd>←</kbd> <kbd>→</kbd></td><td><kbd>A</kbd> <kbd>D</kbd></td></tr>
+            <tr><td>Skjut</td><td><kbd>Space</kbd></td><td><kbd>S</kbd></td></tr>
+            <tr><td>Special (mine)</td><td><kbd>↓</kbd></td><td><kbd>Shift</kbd></td></tr>
+          </tbody>
+        </table>
+        <p class="hint">
+          🎮 Gamepad: thrust = A, rotera = D-pad / vänster spak,
+          skjut = X, special = B. Mobil får automatiskt touch-knappar.
+        </p>
+        <p class="hint">
+          📋 I menyer: D-pad / spak för att flytta fokus, A för att välja.
+          <kbd>Esc</kbd> under match → tillbaka till menyn.
+        </p>
+      </section>
+
+      <section>
+        <h2>Lägen</h2>
+        <dl class="modes-list">
+          <dt>🏁 Time Trial</dt>
+          <dd>1 spelare. Race mot klockan genom checkpoint-gates. Endast speed power-ups spawnar.</dd>
+
+          <dt>🏁 Race 2P</dt>
+          <dd>2 spelare splitscreen. Först till 3 varv vinner.</dd>
+
+          <dt>⚔️ Skjut bottar</dt>
+          <dd>1 spelare. Skjut ner 5 lila AI-bottar så snabbt som möjligt. Du har ett liv.</dd>
+
+          <dt>⚔️ Duell</dt>
+          <dd>2 spelare splitscreen. Först till 5 frags vinner. Alla power-ups aktiva.</dd>
+        </dl>
+      </section>
+
+      <section>
+        <h2>Power-ups</h2>
+        <ul class="pu-list">
+          <li><span class="pu-dot" style="background:#6cd0ff"></span><b>Shield</b> — absorberar ett skott</li>
+          <li><span class="pu-dot" style="background:#ff8030"></span><b>Triple</b> — tre skott parallellt</li>
+          <li><span class="pu-dot" style="background:#ffd040"></span><b>Rapid</b> — högre eldhastighet</li>
+          <li><span class="pu-dot" style="background:#6cff80"></span><b>Speed</b> — kraftigare thrust</li>
+          <li><span class="pu-dot" style="background:#a078ff"></span><b>Cloak</b> — semi-transparent</li>
+          <li><span class="pu-dot" style="background:#ff6cd0"></span><b>AntiGrav</b> — ingen gravitation</li>
+          <li><span class="pu-dot" style="background:#ff4848"></span><b>Mine</b> — lägg en mine bakom dig (special)</li>
+          <li><span class="pu-dot" style="background:#ff8030"></span><b>Homing</b> — målsökande missil (ersätter skott)</li>
+        </ul>
+      </section>
+
+      <div class="postgame-actions">
+        <button id="back-to-menu" class="primary">Tillbaka till menyn</button>
       </div>
     </div>
   `;

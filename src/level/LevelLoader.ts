@@ -342,12 +342,97 @@ function drawDecorations(
   wy: (y: number) => number,
 ): void {
   if (!level.decorations) return;
+  const theme = level.theme;
   for (const d of level.decorations) {
-    if (d.type !== "crystal") continue;
     const px = Math.round(wx(d.x));
     const py = Math.round(wy(d.y));
-    drawCrystal(ctx, px, py, level.theme.accent);
+    switch (d.type) {
+      case "crystal": drawCrystal(ctx, px, py, theme.accent); break;
+      case "rock":    drawRock(ctx, px, py, theme); break;
+      case "plant":   drawPlant(ctx, px, py, theme); break;
+      case "sign":    drawSign(ctx, px, py, theme); break;
+      case "skull":   drawSkull(ctx, px, py); break;
+    }
   }
+}
+
+/** Grey rock clump — 5×3 pixel-art chunk with two highlights and one dark
+ *  shadow line, palette tuned from the level's rock colours. */
+function drawRock(ctx: AnyCtx2D, px: number, py: number, theme: LevelTheme): void {
+  const mid = theme.rockLight;
+  const dark = theme.rockMid;
+  const hi = theme.rockRim;
+  // Base shape — flat-bottomed pentagon.
+  //   .##..
+  //   #####
+  //   #####
+  ctx.fillStyle = mid;
+  ctx.fillRect(px - 2, py, 5, 1);
+  ctx.fillRect(px - 2, py + 1, 5, 1);
+  ctx.fillRect(px - 1, py - 1, 3, 1);
+  // Top highlight.
+  ctx.fillStyle = hi;
+  ctx.fillRect(px - 1, py - 1, 2, 1);
+  ctx.fillRect(px - 2, py, 1, 1);
+  // Bottom shadow.
+  ctx.fillStyle = dark;
+  ctx.fillRect(px + 1, py + 1, 2, 1);
+}
+
+/** Small green plant — a 3-tall sprout. Colour derives from the accent
+ *  but greener; works for both grass and alien flora. */
+function drawPlant(ctx: AnyCtx2D, px: number, py: number, theme: LevelTheme): void {
+  void theme;
+  const leaf = "#5ed884";
+  const leafDark = "#2a7a48";
+  const stem = "#3a9858";
+  // Two side leaves + a centre stem.
+  //   .#.#.
+  //   ##.##
+  //   .#.#.    (stem column)
+  //   ..s..
+  ctx.fillStyle = leaf;
+  ctx.fillRect(px - 1, py - 2, 1, 1);
+  ctx.fillRect(px + 1, py - 2, 1, 1);
+  ctx.fillRect(px - 2, py - 1, 2, 1);
+  ctx.fillRect(px + 1, py - 1, 2, 1);
+  ctx.fillStyle = leafDark;
+  ctx.fillRect(px - 1, py - 1, 1, 1);
+  ctx.fillRect(px + 1, py - 1, 1, 1);
+  ctx.fillStyle = stem;
+  ctx.fillRect(px, py - 2, 1, 3);
+}
+
+/** Yellow / black warning sign on a post. 3×5 pixel total. */
+function drawSign(ctx: AnyCtx2D, px: number, py: number, theme: LevelTheme): void {
+  void theme;
+  const post = "#5a4a3a";
+  const yellow = "#ffd166";
+  const black = "#1a0a0a";
+  // Post.
+  ctx.fillStyle = post;
+  ctx.fillRect(px, py - 1, 1, 3);
+  // Sign panel — diamond with black warning stripe.
+  ctx.fillStyle = yellow;
+  ctx.fillRect(px - 1, py - 3, 3, 1);
+  ctx.fillRect(px - 1, py - 2, 3, 1);
+  ctx.fillStyle = black;
+  ctx.fillRect(px, py - 3, 1, 1);
+  ctx.fillRect(px - 1, py - 2, 1, 1);
+  ctx.fillRect(px + 1, py - 2, 1, 1);
+}
+
+/** Tiny skull — 3×3 with eye sockets. */
+function drawSkull(ctx: AnyCtx2D, px: number, py: number): void {
+  const bone = "#d8d4c4";
+  const shadow = "#7a766a";
+  ctx.fillStyle = bone;
+  ctx.fillRect(px - 1, py - 1, 3, 2);
+  ctx.fillRect(px, py + 1, 1, 1);
+  // Eye sockets.
+  ctx.fillStyle = shadow;
+  ctx.fillRect(px - 1, py, 1, 1);
+  ctx.fillRect(px + 1, py, 1, 1);
 }
 
 function drawCrystal(

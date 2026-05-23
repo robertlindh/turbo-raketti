@@ -145,23 +145,33 @@ export const lavanos: Level = {
   // Magma-glow decorations as "ember crystals" scattered across the floor
   // and ceiling — visually they read as lava droplets and floor cracks.
   decorations: [
-    // Left chamber floor.
+    // Left chamber floor — embers, rocks, and the bones of unlucky pilots.
     { type: "crystal", x: -104, y: 60 },
+    { type: "rock",    x: -96, y: 60 },
     { type: "crystal", x: -88, y: 58 },
+    { type: "skull",   x: -80, y: 60 },
     { type: "crystal", x: -72, y: 52 },
+    { type: "rock",    x: -64, y: 60 },
     { type: "crystal", x: -54, y: 60 },
     // Right chamber floor (mirror).
     { type: "crystal", x: 104, y: 60 },
+    { type: "rock",    x: 96, y: 60 },
     { type: "crystal", x: 88, y: 58 },
+    { type: "skull",   x: 80, y: 60 },
     { type: "crystal", x: 72, y: 52 },
+    { type: "rock",    x: 64, y: 60 },
     { type: "crystal", x: 54, y: 60 },
-    // Central narrows — a few embers around the stalagmite tip.
+    // Central narrows — embers and a sign warning of the choke point.
     { type: "crystal", x: -6, y: 26 },
     { type: "crystal", x: 6, y: 26 },
+    { type: "sign",    x: 0, y: 38 },
     // Ceiling embers near the stalactites.
     { type: "crystal", x: -90, y: -60 },
     { type: "crystal", x: 90, y: -60 },
     { type: "crystal", x: 0, y: -22 },
+    // Chamber-floor skulls add menace near the spawn points.
+    { type: "skull",   x: -100, y: -30 },
+    { type: "skull",   x: 100, y: -30 },
   ],
   // Race checkpoints — a figure-8 around the central narrows so the racing
   // line forces players to commit to one side, navigate the choke, and

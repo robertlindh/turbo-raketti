@@ -44,9 +44,16 @@ export interface LevelTheme {
   accent: string;
 }
 
+export type DecorationType =
+  | "crystal" /* glowing accent point */
+  | "rock"    /* grey stone clump */
+  | "plant"   /* small green sprout */
+  | "sign"    /* warning sign post */
+  | "skull";  /* bones — fits volcanic / cave themes */
+
 export interface DecorationSpawn {
   /** Visual-only decoration drawn on the backdrop or as a sprite. */
-  type: "crystal";
+  type: DecorationType;
   x: number;
   y: number;
 }

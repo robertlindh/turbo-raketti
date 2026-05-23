@@ -81,6 +81,34 @@ function pointInPolygon(p: { x: number; y: number }, poly: Point[]): boolean {
   return inside;
 }
 
+/** Shortest distance from `p` to any edge of the polygon. Used to gate bot
+ *  spawns away from walls so the collider has clearance. */
+function minDistanceToPolygonEdges(
+  p: { x: number; y: number },
+  poly: Point[],
+): number {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1e-9) {
+      const d = Math.hypot(p.x - a.x, p.y - a.y);
+      if (d < best) best = d;
+      continue;
+    }
+    let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.x + t * dx;
+    const cy = a.y + t * dy;
+    const d = Math.hypot(p.x - cx, p.y - cy);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
 interface PlayerCfg {
   index: number;
   color: number;
@@ -1339,33 +1367,44 @@ export class Game {
   }
 
   private spawnBot(): void {
-    const lvl = (this as unknown as { _level?: Level })._level;
-    void lvl;
-    // The Level is already loaded via loadLevel; we just need bounds and
-    // polygons. Grab them off the camera's bounds + cached polygons via
-    // the spawn helper.
     const level = this.cachedLevelForBots();
     if (!level) return;
     // Pick a spawn point well inside the cave + a comfortable distance
-    // from the player so they don't appear on top of P1.
+    // from the player so they don't appear on top of P1. We also enforce
+    // a 2m gap from every wall + obstacle edge so the bot's 1m collider
+    // doesn't end up clipped through the terrain.
     const p1 = this.players[0]?.ship?.body.translation();
     const margin = 6;
+    const wallClearance = 2.0;
     let spawn: Point | null = null;
-    for (let attempt = 0; attempt < 30; attempt++) {
+    for (let attempt = 0; attempt < 60; attempt++) {
       const b = level.bounds;
       const x = b.minX + margin + Math.random() * (b.maxX - b.minX - margin * 2);
       const y = b.minY + margin + Math.random() * (b.maxY - b.minY - margin * 2);
       const p = { x, y };
+      // Inside the cave boundary?
       if (!pointInPolygon(p, level.boundary)) continue;
+      // Not inside any obstacle?
       let blocked = false;
       for (const obs of level.obstacles) {
         if (pointInPolygon(p, obs)) { blocked = true; break; }
       }
       if (blocked) continue;
+      // Far enough from every polygon edge that the collider clears?
+      if (minDistanceToPolygonEdges(p, level.boundary) < wallClearance) continue;
+      let nearObstacle = false;
+      for (const obs of level.obstacles) {
+        if (minDistanceToPolygonEdges(p, obs) < wallClearance) {
+          nearObstacle = true;
+          break;
+        }
+      }
+      if (nearObstacle) continue;
+      // Not on top of the player.
       if (p1) {
         const dx = p.x - p1.x;
         const dy = p.y - p1.y;
-        if (Math.hypot(dx, dy) < 18) continue; // too close to player
+        if (Math.hypot(dx, dy) < 18) continue;
       }
       spawn = p;
       break;

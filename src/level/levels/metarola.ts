@@ -98,17 +98,24 @@ export const metarola: Level = {
     { x: 88, y: -40, angle: -Math.PI / 2 },
   ],
   decorations: [
-    // Floor crystals scattered along the bottom.
+    // Floor crystals + scattered rocks along the bottom.
     { type: "crystal", x: -88, y: 58 },
+    { type: "rock",    x: -72, y: 59 },
     { type: "crystal", x: -64, y: 60 },
+    { type: "rock",    x: -48, y: 60 },
     { type: "crystal", x: -32, y: 62 },
+    { type: "sign",    x: -20, y: 60 },
     { type: "crystal", x: 16, y: 62 },
+    { type: "rock",    x: 30, y: 60 },
     { type: "crystal", x: 40, y: 58 },
+    { type: "rock",    x: 60, y: 59 },
     { type: "crystal", x: 88, y: 58 },
     // A few on the ceiling, hanging.
     { type: "crystal", x: -80, y: -58 },
     { type: "crystal", x: 24, y: -58 },
     { type: "crystal", x: 80, y: -58 },
+    // Sign by the start of the race line.
+    { type: "sign",    x: -76, y: -38 },
   ],
   // Race checkpoints — clockwise loop around the central pillar.
   checkpoints: [
