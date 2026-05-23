@@ -41,10 +41,13 @@ export const ALL_TYPES: PowerUpType[] = [
   "shield", "triple", "rapid", "speed", "cloak", "antigrav", "mine", "homing",
 ];
 
-/** Pickup radius in metres — bigger now that icons are larger. */
-export const PICKUP_RADIUS = 2.5;
-/** World size of the on-screen icon (radius, metres). Doubled per request. */
-export const ICON_RADIUS = 1.8;
+/** Pickup radius in metres — scales with the icon size so the hitbox tracks
+ *  the visible disc. */
+export const PICKUP_RADIUS = 3.5;
+/** World size of the on-screen icon (radius, metres). Doubled compared to
+ *  the previous iteration: from 1.8 → 3.6 so the disc reads from across
+ *  the cave. */
+export const ICON_RADIUS = 3.6;
 
 export class PowerUpEntity {
   readonly type: PowerUpType;
@@ -54,6 +57,11 @@ export class PowerUpEntity {
   alive = true;
   /** Bob animation phase, seconds since spawn. */
   private t = 0;
+  /** Layers we animate individually so the pulse reads stronger than a
+   *  simple uniform scale. The outer glow breathes large + transparent;
+   *  the disc and icon do a subtle counter-pulse. */
+  private outerGlow: Graphics;
+  private innerGroup: Container;
 
   constructor(parent: Container, type: PowerUpType, x: number, y: number) {
     this.type = type;
@@ -65,38 +73,192 @@ export class PowerUpEntity {
     this.view.x = x;
     this.view.y = y;
 
-    // Outer glow ring.
-    const ring = new Graphics();
-    ring.circle(0, 0, ICON_RADIUS).fill({ color: def.color, alpha: 0.18 });
-    ring.circle(0, 0, ICON_RADIUS * 0.78).fill({ color: def.color, alpha: 0.35 });
-    ring.circle(0, 0, ICON_RADIUS * 0.55).fill({ color: def.color, alpha: 1 });
-    ring.circle(0, 0, ICON_RADIUS * 0.55).stroke({ color: 0xffffff, width: 0.05, alpha: 0.9 });
-    this.view.addChild(ring);
+    // 1. Outer glow ring — large, very translucent. Pulses scale + alpha.
+    this.outerGlow = new Graphics();
+    this.outerGlow.circle(0, 0, ICON_RADIUS * 1.10).fill({ color: def.color, alpha: 0.18 });
+    this.outerGlow.circle(0, 0, ICON_RADIUS * 0.95).fill({ color: def.color, alpha: 0.30 });
+    this.view.addChild(this.outerGlow);
 
-    // Inner letter — done with thick strokes so it's readable at this scale.
-    const letter = new Graphics();
-    letter.rect(-0.2, -0.35, 0.4, 0.7).fill({ color: 0xffffff });
-    // Just use a coloured rectangle stamp; the colour ring tells the player
-    // what the power-up is more clearly than tiny text at this resolution.
-    letter.rect(-0.4, -0.15, 0.8, 0.3).fill({ color: 0xffffff });
-    this.view.addChild(letter);
+    // 2. Inner group — holds the solid disc + the icon. Pulses subtly so
+    //    the symbol stays legible even as the glow breathes.
+    this.innerGroup = new Container();
+    this.view.addChild(this.innerGroup);
 
-    // Reuse the def.glyph for a future-proof debug aid (not rendered yet).
-    void def.glyph;
+    // 2a. Solid coloured disc with a bright rim — this is the actual "thing".
+    const disc = new Graphics();
+    disc.circle(0, 0, ICON_RADIUS * 0.78).fill({ color: def.color, alpha: 1 });
+    disc.circle(0, 0, ICON_RADIUS * 0.78).stroke({ color: 0xffffff, width: 0.18, alpha: 0.95 });
+    // A slightly darker inner stroke gives the disc a small bevel.
+    disc.circle(0, 0, ICON_RADIUS * 0.72).stroke({ color: 0x000000, width: 0.12, alpha: 0.25 });
+    this.innerGroup.addChild(disc);
+
+    // 2b. The icon — distinct symbol per power-up type so the player can
+    //     tell them apart at a glance, no reading required.
+    const icon = new Graphics();
+    drawPowerUpIcon(icon, type, ICON_RADIUS * 0.55);
+    this.innerGroup.addChild(icon);
 
     parent.addChild(this.view);
   }
 
   update(dt: number) {
     this.t += dt;
-    // Gentle vertical bob + scale pulse.
-    this.view.y = this.y + Math.sin(this.t * 3) * 0.2;
-    const s = 1 + Math.sin(this.t * 4) * 0.06;
-    this.view.scale.set(s, s);
+    // Gentle vertical bob.
+    this.view.y = this.y + Math.sin(this.t * 2.6) * 0.35;
+
+    // Outer glow — strong breath: scale 1.0 → 1.35, alpha 0.35 → 1.0.
+    const p = (Math.sin(this.t * 3.4) + 1) * 0.5; // 0..1
+    const glowScale = 1 + p * 0.35;
+    this.outerGlow.scale.set(glowScale, glowScale);
+    this.outerGlow.alpha = 0.35 + p * 0.65;
+
+    // Inner group — small counter-pulse so the icon doesn't feel locked.
+    const innerPulse = 1 + Math.sin(this.t * 3.4 + Math.PI) * 0.06;
+    this.innerGroup.scale.set(innerPulse, innerPulse);
   }
 
   dispose() {
     this.view.destroy({ children: true });
     this.alive = false;
+  }
+}
+
+/**
+ * Draw a distinct white symbol for each power-up type into `g`. The icon is
+ * sized so the bounding box fits inside a square of side ≈ 2 * s centred on
+ * (0, 0). Caller can rely on the symbol staying inside `disc`'s radius.
+ */
+function drawPowerUpIcon(g: Graphics, type: PowerUpType, s: number): void {
+  const W = 0xffffff;
+  switch (type) {
+    case "shield": {
+      // Shield silhouette — flat top, pointed bottom, with an inner crest.
+      g.moveTo(-s * 0.85, -s * 0.7)
+        .lineTo(s * 0.85, -s * 0.7)
+        .lineTo(s * 0.85, s * 0.05)
+        .lineTo(0, s * 0.9)
+        .lineTo(-s * 0.85, s * 0.05)
+        .closePath()
+        .fill({ color: W });
+      // Bevel ring inside.
+      g.moveTo(-s * 0.55, -s * 0.45)
+        .lineTo(s * 0.55, -s * 0.45)
+        .lineTo(s * 0.55, -s * 0.1)
+        .lineTo(0, s * 0.45)
+        .lineTo(-s * 0.55, -s * 0.1)
+        .closePath()
+        .stroke({ color: 0x000000, width: s * 0.14, alpha: 0.35 });
+      return;
+    }
+    case "triple": {
+      // Three bullets in a row.
+      g.circle(-s * 0.6, 0, s * 0.28).fill({ color: W });
+      g.circle(0, 0, s * 0.28).fill({ color: W });
+      g.circle(s * 0.6, 0, s * 0.28).fill({ color: W });
+      return;
+    }
+    case "rapid": {
+      // Lightning bolt — angular zig-zag.
+      g.moveTo(s * 0.15, -s * 0.95)
+        .lineTo(-s * 0.55, s * 0.05)
+        .lineTo(-s * 0.05, s * 0.05)
+        .lineTo(-s * 0.45, s * 0.95)
+        .lineTo(s * 0.55, -s * 0.15)
+        .lineTo(s * 0.05, -s * 0.15)
+        .closePath()
+        .fill({ color: W });
+      return;
+    }
+    case "speed": {
+      // Double chevron pointing right — universal "fast forward" cue.
+      const chev = (offset: number) => {
+        g.moveTo(offset - s * 0.5, -s * 0.7)
+          .lineTo(offset + s * 0.1, 0)
+          .lineTo(offset - s * 0.5, s * 0.7)
+          .lineTo(offset - s * 0.2, s * 0.7)
+          .lineTo(offset + s * 0.4, 0)
+          .lineTo(offset - s * 0.2, -s * 0.7)
+          .closePath()
+          .fill({ color: W });
+      };
+      chev(-s * 0.3);
+      chev(s * 0.25);
+      return;
+    }
+    case "cloak": {
+      // Eye / lens — outer ellipse with a centred pupil.
+      g.ellipse(0, 0, s * 0.95, s * 0.55).stroke({ color: W, width: s * 0.16 });
+      g.circle(0, 0, s * 0.28).fill({ color: W });
+      return;
+    }
+    case "antigrav": {
+      // Up-arrow inside a circle — "lift".
+      g.circle(0, 0, s * 0.85).stroke({ color: W, width: s * 0.14 });
+      g.moveTo(0, -s * 0.55)
+        .lineTo(s * 0.4, -s * 0.1)
+        .lineTo(s * 0.18, -s * 0.1)
+        .lineTo(s * 0.18, s * 0.45)
+        .lineTo(-s * 0.18, s * 0.45)
+        .lineTo(-s * 0.18, -s * 0.1)
+        .lineTo(-s * 0.4, -s * 0.1)
+        .closePath()
+        .fill({ color: W });
+      return;
+    }
+    case "mine": {
+      // 4-pointed spiked star.
+      g.rect(-s * 0.1, -s * 0.95, s * 0.2, s * 1.9).fill({ color: W });
+      g.rect(-s * 0.95, -s * 0.1, s * 1.9, s * 0.2).fill({ color: W });
+      // Diagonal spikes — thinner, rotated rectangles.
+      const diag = (rot: number) => {
+        const cos = Math.cos(rot), sin = Math.sin(rot);
+        const len = s * 0.7;
+        const wid = s * 0.12;
+        // Manual rectangle by 4 transformed corners.
+        const pts = [
+          [-wid, -len], [wid, -len], [wid, len], [-wid, len],
+        ].map(([px, py]) => [px * cos - py * sin, px * sin + py * cos]);
+        g.moveTo(pts[0][0], pts[0][1])
+          .lineTo(pts[1][0], pts[1][1])
+          .lineTo(pts[2][0], pts[2][1])
+          .lineTo(pts[3][0], pts[3][1])
+          .closePath()
+          .fill({ color: W });
+      };
+      diag(Math.PI / 4);
+      diag(-Math.PI / 4);
+      g.circle(0, 0, s * 0.32).fill({ color: 0x000000 });
+      g.circle(0, 0, s * 0.18).fill({ color: W });
+      return;
+    }
+    case "homing": {
+      // Tiny rocket silhouette pointing up — nose, body, fins, flame.
+      // Nose triangle.
+      g.moveTo(0, -s * 0.9)
+        .lineTo(s * 0.35, -s * 0.35)
+        .lineTo(-s * 0.35, -s * 0.35)
+        .closePath()
+        .fill({ color: W });
+      // Body.
+      g.rect(-s * 0.3, -s * 0.35, s * 0.6, s * 0.75).fill({ color: W });
+      // Fins.
+      g.moveTo(-s * 0.3, s * 0.2)
+        .lineTo(-s * 0.7, s * 0.5)
+        .lineTo(-s * 0.3, s * 0.5)
+        .closePath()
+        .fill({ color: W });
+      g.moveTo(s * 0.3, s * 0.2)
+        .lineTo(s * 0.7, s * 0.5)
+        .lineTo(s * 0.3, s * 0.5)
+        .closePath()
+        .fill({ color: W });
+      // Flame — kept white-on-disc so it reads from far away.
+      g.moveTo(-s * 0.2, s * 0.5)
+        .lineTo(0, s * 0.95)
+        .lineTo(s * 0.2, s * 0.5)
+        .closePath()
+        .fill({ color: 0x000000, alpha: 0.45 });
+      return;
+    }
   }
 }
