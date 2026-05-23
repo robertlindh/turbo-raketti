@@ -1,12 +1,22 @@
-// Highscores — localStorage-backed leaderboards per level + mode.
+// Highscores — global leaderboards backed by Firebase Realtime Database,
+// with localStorage as an offline-friendly cache for instant UI render.
 //
-// Two leaderboards exist for each level:
+// Leaderboards per level + mode:
 //   - "time-trial": lowest time wins. `value` is seconds.
+//   - "race":       same — winning racer's time.
+//   - "wave":       same — time to take down 5 bots (lower = better).
 //   - "duel":       highest score wins. `value` is winning frag count;
 //                   `loser` records the opponent's frag count.
 //
-// Top 10 entries per board. A new score only qualifies if either fewer
-// than 10 entries exist or it beats the worst current entry.
+// Top 10 entries per board. A new score qualifies if either fewer than
+// 10 entries exist or it beats the worst current entry.
+//
+// Sync model:
+//   - getHighScores() returns from the local cache (synchronous, fast).
+//   - fetchHighScoresAsync() pulls the latest from Firebase + updates the
+//     cache. UI calls it after rendering and re-renders when it resolves.
+//   - addScore() pushes to Firebase + updates the cache. Falls back to
+//     localStorage-only if Firebase is unreachable.
 
 export type GameMode = "time-trial" | "duel" | "race" | "wave";
 
@@ -74,8 +84,10 @@ export function qualifies(levelId: string, mode: GameMode, value: number): boole
   return isTimeBased ? value < worst.value : value > worst.value;
 }
 
-/** Insert a new score, trim to top 10, return the resulting board.
- *  Returns the inserted score's 1-based rank, or 0 if it didn't qualify. */
+/** Insert a new score and update both the local cache and Firebase. The
+ *  local cache is updated immediately so the postgame can show the new
+ *  ranking without waiting on the network; Firebase write happens in the
+ *  background. Returns the rank inside the local cache. */
 export function addScore(
   levelId: string,
   mode: GameMode,
@@ -99,7 +111,80 @@ export function addScore(
   table[levelId][mode] = board;
   save(table);
   const rank = board.indexOf(fullEntry) + 1;
+
+  // Background-push the entry to the shared Firebase board. Errors are
+  // swallowed — the local board is already saved so a failed network
+  // request doesn't lose the player's run.
+  void pushScoreToFirebase(levelId, mode, fullEntry);
+
   return { rank, board };
+}
+
+/** Fetch the latest leaderboard from Firebase, merge it into the local
+ *  cache, and return the trimmed top 10. UI code should call this after
+ *  rendering and re-render once the promise resolves. Returns the same
+ *  cached value as getHighScores on failure so the UI never empties. */
+export async function fetchHighScoresAsync(
+  levelId: string,
+  mode: GameMode,
+): Promise<HighScore[]> {
+  const remote = await fetchScoresFromFirebase(levelId, mode);
+  if (remote === null) return getHighScores(levelId, mode);
+  // Replace the local cache for this board with the canonical remote one.
+  const table = load();
+  table[levelId] = table[levelId] ?? { "time-trial": [], duel: [], race: [], wave: [] };
+  table[levelId][mode] = remote;
+  save(table);
+  return remote;
+}
+
+// ── Firebase plumbing ──────────────────────────────────────────────────────
+
+async function pushScoreToFirebase(
+  levelId: string,
+  mode: GameMode,
+  entry: HighScore,
+): Promise<void> {
+  try {
+    const { getDb } = await import("./firebase");
+    const db = getDb();
+    if (!db) return;
+    const { ref, push } = await import("firebase/database");
+    // Realtime Database refuses `undefined` properties — strip the
+    // optional `loser` field if it's not present.
+    const clean: Record<string, unknown> = {
+      initials: entry.initials,
+      value: entry.value,
+      date: entry.date,
+    };
+    if (entry.loser !== undefined) clean.loser = entry.loser;
+    await push(ref(db, `/scores/${levelId}/${mode}`), clean);
+  } catch (err) {
+    console.warn("Firebase push failed:", err);
+  }
+}
+
+async function fetchScoresFromFirebase(
+  levelId: string,
+  mode: GameMode,
+): Promise<HighScore[] | null> {
+  try {
+    const { getDb } = await import("./firebase");
+    const db = getDb();
+    if (!db) return null;
+    const { ref, get } = await import("firebase/database");
+    const snap = await get(ref(db, `/scores/${levelId}/${mode}`));
+    if (!snap.exists()) return [];
+    const raw = snap.val() as Record<string, HighScore>;
+    const list = Object.values(raw).filter(
+      (s) => s && typeof s.value === "number" && typeof s.initials === "string",
+    );
+    list.sort(compare(mode));
+    return list.slice(0, MAX_ENTRIES);
+  } catch (err) {
+    console.warn("Firebase fetch failed:", err);
+    return null;
+  }
 }
 
 /** Format a time-trial value as MM:SS.cs (centiseconds for tight finishes). */

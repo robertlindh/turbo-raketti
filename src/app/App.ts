@@ -10,7 +10,8 @@ import { Game } from "../game/Game";
 import type { GameResult, GameMode } from "../game/Game";
 import { LEVELS } from "../level/levels";
 import {
-  getHighScores, qualifies, addScore, formatTime, type HighScore,
+  getHighScores, qualifies, addScore, fetchHighScoresAsync,
+  formatTime, type HighScore,
 } from "./highscores";
 import {
   unlockAudio, startMenuMusic, stopMenuMusic, startVolumeWatcher,
@@ -153,6 +154,23 @@ export class App {
     this.startMenuGamepadNav();
     // Resume the menu loop on return from postgame / Esc-out-of-match.
     void startMenuMusic();
+    // Pull the latest global leaderboard for the current selection and
+    // re-render the menu when it arrives. The local cache renders first
+    // so the menu never blanks out.
+    void this.refreshHighscoresAndRender();
+  }
+
+  /** Fetch the active level + mode's leaderboard from Firebase and, when
+   *  it resolves, re-render the menu if it changed. */
+  private async refreshHighscoresAndRender(): Promise<void> {
+    const beforeIds = this.selectedLevelId + "/" + this.selectedMode;
+    await fetchHighScoresAsync(this.selectedLevelId, this.selectedMode);
+    // The user might have navigated away by the time we get here — only
+    // re-render if we're still on the same menu selection.
+    if (this.currentScene !== "menu") return;
+    if (this.selectedLevelId + "/" + this.selectedMode !== beforeIds) return;
+    this.screens.innerHTML = renderMenu(this);
+    this.bindMenu();
   }
 
   private showInstructions(): void {
@@ -200,6 +218,16 @@ export class App {
     this.bindPostgame(result);
     this.focusFirst();
     this.startMenuGamepadNav();
+    // Pull the global leaderboard for this mode + level so the postgame
+    // shows the latest top 10 once the network responds.
+    void this.refreshPostgame(result);
+  }
+
+  private async refreshPostgame(result: GameResult): Promise<void> {
+    await fetchHighScoresAsync(result.levelId, result.mode);
+    if (this.currentScene !== "postgame") return;
+    this.screens.innerHTML = renderPostgame(result);
+    this.bindPostgame(result);
   }
 
   // ── event wiring ────────────────────────────────────────────────────────
