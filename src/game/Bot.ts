@@ -31,6 +31,11 @@ export class Bot {
   private boundary: Point[];
   private obstacles: Point[][];
   private bounds: Level["bounds"];
+  /** Last seen position — used to detect "stuck against a wall" state
+   *  where the AI keeps thrusting forward but the body can't move. */
+  private lastPos: { x: number; y: number };
+  /** Seconds spent making no progress toward the current target. */
+  private stuckFor = 0;
 
   constructor(
     physics: PhysicsWorld,
@@ -49,10 +54,12 @@ export class Bot {
     this.obstacles = level.obstacles;
     this.bounds = level.bounds;
     this.target = this.pickTarget();
+    this.lastPos = { x: spawn.x, y: spawn.y };
   }
 
   /** Produce an input vector for the underlying ship this tick. Steers
-   *  toward `target`; if already there, picks a new one. */
+   *  toward `target`; if already there or stuck against a wall, picks
+   *  a new one. */
   computeInput(): ShipInput {
     const pos = this.ship.body.translation();
     const dx = this.target.x - pos.x;
@@ -61,6 +68,28 @@ export class Bot {
     if (dist < ARRIVE_RADIUS) {
       this.target = this.pickTarget();
     }
+
+    // Stuck detection — if the body has barely moved in the last half
+    // second despite the AI trying to thrust, the bot has wedged itself
+    // against geometry. Pick a fresh target so it tries another route.
+    const moved = Math.hypot(pos.x - this.lastPos.x, pos.y - this.lastPos.y);
+    this.lastPos.x = pos.x;
+    this.lastPos.y = pos.y;
+    // Speed roughly < 1 m/s per physics step (1/60s) → moved < 0.017m.
+    if (moved < 0.02) {
+      this.stuckFor += 1 / 60;
+      if (this.stuckFor > 0.6) {
+        this.target = this.pickTarget();
+        this.stuckFor = 0;
+        // Force a hard kick — applyInput will rotate first, but apply a
+        // small reverse impulse to dislodge the body from the wall.
+        const v = this.ship.body.linvel();
+        this.ship.body.setLinvel({ x: v.x * -0.3, y: v.y * -0.3 - 2 }, true);
+      }
+    } else {
+      this.stuckFor = 0;
+    }
+
     const desiredAngle = Math.atan2(dy, dx);
     const currentAngle = this.ship.body.rotation();
     // Shortest angular difference, signed.

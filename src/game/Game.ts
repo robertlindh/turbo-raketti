@@ -358,10 +358,13 @@ export class Game {
       : undefined;
     this.powerups = new PowerUpSystem(this.worldLayer, level, allowedPowerUps);
 
-    // Racing — always on for both race-style modes. For duel, expose it
-    // only if the user explicitly turns it on via settings.
+    // Racing — always on for race-style modes. For duel only, the legacy
+    // gameMode setting can turn checkpoints on. Wave (combat solo)
+    // never gets racing, regardless of the setting — the player is
+    // hunting bots, not chasing gates.
     const numPlayersForRacing = this.config.mode === "time-trial" ? 1 : 2;
-    const wantRacing = raceLike || (SETTINGS.gameMode > 0.5);
+    const wantRacing = raceLike ||
+      (this.config.mode === "duel" && SETTINGS.gameMode > 0.5);
     if (wantRacing && level.checkpoints && level.checkpoints.length > 0) {
       this.racing = new RacingSystem(this.worldLayer, level, numPlayersForRacing);
     }
