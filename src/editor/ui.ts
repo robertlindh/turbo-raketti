@@ -253,7 +253,7 @@ function bindPlayTest(editor: Editor): void {
     // Draft is autosaved on every mutation, but force one more save now.
     localStorage.setItem("tr.editor.draft", JSON.stringify(editor.level));
     // Use Vite's BASE_URL so the test-play link works both locally ("/")
-    // and on GitHub Pages ("/turbo-rakketti/").
+    // and on GitHub Pages ("/turbo-raketti/").
     window.open(`${import.meta.env.BASE_URL}#__draft`, "_blank");
   });
 }

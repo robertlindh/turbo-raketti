@@ -1,20 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  TURBO RAKKETTI — wordmark
+  TURBO RAKETTI — wordmark
   Pixel-perfect 5x7 bitmap glyphs rendered as SVG <rect>s, with palette pulled
   straight from src/render/sprites.ts and src/render/Background.ts so the logo
   reads as the same art style as the game.
 
-      "TURBO"     -> nose palette  (#ffe199 -> #ffd166 -> #ff8030)
-      "RAKKETTI"  -> hull palette  (#dec4ff -> #aef0ff -> #4fa0d0 -> #1f5078)
-      shadow      -> outline       (#0a0414, the SHIP "K" colour)
+      "TURBO"    -> nose palette  (#ffe199 -> #ffd166 -> #ff8030)
+      "RAKETTI"  -> hull palette  (#dec4ff -> #aef0ff -> #4fa0d0 -> #1f5078)
+      shadow     -> outline       (#0a0414, the SHIP "K" colour)
 
   ViewBox is 360x84 logical units. Each glyph cell is 1 unit pre-scale; the
-  TURBO line uses scale 3 (each glyph is 15x21 units), RAKKETTI uses scale 6
+  TURBO line uses scale 3 (each glyph is 15x21 units), RAKETTI uses scale 6
   (each glyph is 30x42 units). shape-rendering="crispEdges" keeps the pixels
   sharp at any browser size.
+
+  RAKETTI is 7 glyphs at 6 px wide × scale 6 = 252 logical units. Centred
+  in the 360-wide viewBox by starting at x=54 (= (360-252)/2). Shadow is
+  offset down-right 3 units from the main word.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 84" shape-rendering="crispEdges" role="img" aria-label="Turbo Rakketti">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 84" shape-rendering="crispEdges" role="img" aria-label="Turbo Raketti">
   <defs>
     <!-- Hull gradient: rim-light lavender at top, fading through canopy cyan and hull blue down to hull-deep shadow. -->
     <linearGradient id="hull" gradientUnits="userSpaceOnUse" x1="0" y1="32" x2="0" y2="74">
@@ -49,8 +53,8 @@
     <g transform="translate(140,11) scale(3)">
       <use href="#L-T"/><use href="#L-U" x="6"/><use href="#L-R" x="12"/><use href="#L-B" x="18"/><use href="#L-O" x="24"/>
     </g>
-    <g transform="translate(42,35) scale(6)">
-      <use href="#L-R"/><use href="#L-A" x="6"/><use href="#L-K" x="12"/><use href="#L-K" x="18"/><use href="#L-E" x="24"/><use href="#L-T" x="30"/><use href="#L-T" x="36"/><use href="#L-I" x="42"/>
+    <g transform="translate(57,35) scale(6)">
+      <use href="#L-R"/><use href="#L-A" x="6"/><use href="#L-K" x="12"/><use href="#L-E" x="18"/><use href="#L-T" x="24"/><use href="#L-T" x="30"/><use href="#L-I" x="36"/>
     </g>
   </g>
 
@@ -61,10 +65,10 @@
     </g>
   </g>
 
-  <!-- "RAKKETTI" -->
+  <!-- "RAKETTI" -->
   <g fill="url(#hull)">
-    <g transform="translate(39,32) scale(6)">
-      <use href="#L-R"/><use href="#L-A" x="6"/><use href="#L-K" x="12"/><use href="#L-K" x="18"/><use href="#L-E" x="24"/><use href="#L-T" x="30"/><use href="#L-T" x="36"/><use href="#L-I" x="42"/>
+    <g transform="translate(54,32) scale(6)">
+      <use href="#L-R"/><use href="#L-A" x="6"/><use href="#L-K" x="12"/><use href="#L-E" x="18"/><use href="#L-T" x="24"/><use href="#L-T" x="30"/><use href="#L-I" x="36"/>
     </g>
   </g>
 </svg>
