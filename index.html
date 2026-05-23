@@ -87,21 +87,23 @@
         50%      { opacity: 1; }
       }
 
-      /* The rocket flies across the screen on a slow loop. */
+      /* Rocket spawner — each rocket is positioned absolutely and animated
+         in JS (see the inline script at the bottom of <body>). The
+         container fills the loading screen so rocket transforms can use
+         pixel coords. */
+      #loading-screen .rocket-spawner {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+        z-index: 1;
+      }
       #loading-screen .rocket {
         position: absolute;
-        bottom: 18%;
-        left: -80px;
-        width: 64px;
+        width: 48px;
         height: auto;
-        transform: rotate(70deg);
+        will-change: left, top, transform;
         filter: drop-shadow(0 0 8px rgba(255,180,90,0.55));
-        animation: fly 6.5s linear infinite;
-      }
-      @keyframes fly {
-        0%   { transform: translate(0, 0)        rotate(70deg); }
-        50%  { transform: translate(50vw, -30vh) rotate(80deg); }
-        100% { transform: translate(110vw, -60vh) rotate(75deg); }
       }
 
       /* The logo SVG, prominent in the centre. */
@@ -521,50 +523,11 @@
         </g>
       </svg>
 
-      <!-- Animated rocket, inline so no second request. Same sprite cells as
-           src/render/sprites.ts SHIP_GRID, plus a 2-row exhaust flame. -->
-      <svg class="rocket" viewBox="0 0 13 17" shape-rendering="crispEdges" aria-hidden="true">
-        <!-- Outline (K) -->
-        <g fill="#0a0414">
-          <rect x="6" y="0" width="1" height="1"/>
-          <rect x="5" y="1" width="1" height="2"/><rect x="7" y="1" width="1" height="2"/>
-          <rect x="4" y="3" width="1" height="2"/><rect x="8" y="3" width="1" height="2"/>
-          <rect x="3" y="5" width="1" height="2"/><rect x="9" y="5" width="1" height="2"/>
-          <rect x="2" y="7" width="1" height="2"/><rect x="10" y="7" width="1" height="2"/>
-          <rect x="1" y="9" width="1" height="2"/><rect x="11" y="9" width="1" height="2"/>
-          <rect x="0" y="11" width="1" height="3"/><rect x="12" y="11" width="1" height="3"/>
-          <rect x="1" y="13" width="1" height="1"/><rect x="11" y="13" width="1" height="1"/>
-        </g>
-        <!-- Hull mid (H) -->
-        <g fill="#4fa0d0">
-          <rect x="6" y="1" width="1" height="3"/>
-          <rect x="5" y="3" width="1" height="2"/><rect x="7" y="3" width="1" height="2"/>
-          <rect x="4" y="5" width="5" height="2"/>
-          <rect x="3" y="7" width="3" height="2"/><rect x="7" y="7" width="3" height="2"/>
-          <rect x="2" y="9" width="9" height="2"/>
-          <rect x="2" y="11" width="9" height="1"/>
-        </g>
-        <!-- Hull deep shadow (h) -->
-        <rect x="6" y="7" width="1" height="2" fill="#1f5078"/>
-        <!-- Canopy (C) -->
-        <rect x="6" y="4" width="1" height="1" fill="#aef0ff"/>
-        <!-- Wing tips (M) -->
-        <g fill="#7ec0e8">
-          <rect x="1" y="11" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/>
-          <rect x="1" y="12" width="2" height="1"/><rect x="10" y="12" width="2" height="1"/>
-        </g>
-        <!-- Exhaust flame -->
-        <g fill="#ff8030">
-          <rect x="3"  y="14" width="1" height="1"/><rect x="9" y="14" width="1" height="1"/>
-          <rect x="4"  y="15" width="1" height="1"/><rect x="8" y="15" width="1" height="1"/>
-        </g>
-        <g fill="#ffd166">
-          <rect x="4" y="14" width="5" height="1"/>
-          <rect x="5" y="15" width="3" height="1"/>
-          <rect x="6" y="16" width="1" height="1"/>
-        </g>
-        <rect x="6" y="14" width="1" height="2" fill="#ffffff"/>
-      </svg>
+      <!-- Rocket spawner — populated by JS at the bottom of <body>. Each
+           rocket is the 13x17 sprite from sprites.ts SHIP_GRID, in either
+           player 1's blue palette or player 2's red palette, flying across
+           the screen from a random side. -->
+      <div class="rocket-spawner" id="rocket-spawner" aria-hidden="true"></div>
 
       <img class="logo" src="/logo.svg" alt="Turbo Raketti"/>
 
@@ -580,6 +543,147 @@
 
       <div class="scanlines"></div>
     </div>
+
+    <!-- Loading screen rocket animation. Spawns a new rocket from a random
+         edge every ~1.5s with a 30% chance of being the red P2 ship. Pure
+         vanilla JS so it runs before the main bundle finishes loading. -->
+    <script>
+      (function () {
+        var spawner = document.getElementById("rocket-spawner");
+        if (!spawner) return;
+
+        // Build the rocket SVG markup as a string, swapping the body /
+        // canopy palette based on which player it represents. Nose points
+        // along the -Y axis (up the screen) so a rotation of atan2(dy,dx)+90°
+        // aligns it with its flight direction.
+        function rocketSvg(red) {
+          var hullMid    = red ? "#d04848" : "#4fa0d0";
+          var hullShadow = red ? "#781f1f" : "#1f5078";
+          var canopy     = red ? "#ffd0d0" : "#aef0ff";
+          var wingTip    = red ? "#e87878" : "#7ec0e8";
+          return ''
+            + '<svg viewBox="0 0 13 17" shape-rendering="crispEdges">'
+            +   '<g fill="#0a0414">'
+            +     '<rect x="6" y="0" width="1" height="1"/>'
+            +     '<rect x="5" y="1" width="1" height="2"/><rect x="7" y="1" width="1" height="2"/>'
+            +     '<rect x="4" y="3" width="1" height="2"/><rect x="8" y="3" width="1" height="2"/>'
+            +     '<rect x="3" y="5" width="1" height="2"/><rect x="9" y="5" width="1" height="2"/>'
+            +     '<rect x="2" y="7" width="1" height="2"/><rect x="10" y="7" width="1" height="2"/>'
+            +     '<rect x="1" y="9" width="1" height="2"/><rect x="11" y="9" width="1" height="2"/>'
+            +     '<rect x="0" y="11" width="1" height="3"/><rect x="12" y="11" width="1" height="3"/>'
+            +     '<rect x="1" y="13" width="1" height="1"/><rect x="11" y="13" width="1" height="1"/>'
+            +   '</g>'
+            +   '<g fill="' + hullMid + '">'
+            +     '<rect x="6" y="1" width="1" height="3"/>'
+            +     '<rect x="5" y="3" width="1" height="2"/><rect x="7" y="3" width="1" height="2"/>'
+            +     '<rect x="4" y="5" width="5" height="2"/>'
+            +     '<rect x="3" y="7" width="3" height="2"/><rect x="7" y="7" width="3" height="2"/>'
+            +     '<rect x="2" y="9" width="9" height="2"/>'
+            +     '<rect x="2" y="11" width="9" height="1"/>'
+            +   '</g>'
+            +   '<rect x="6" y="7" width="1" height="2" fill="' + hullShadow + '"/>'
+            +   '<rect x="6" y="4" width="1" height="1" fill="' + canopy + '"/>'
+            +   '<g fill="' + wingTip + '">'
+            +     '<rect x="1" y="11" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/>'
+            +     '<rect x="1" y="12" width="2" height="1"/><rect x="10" y="12" width="2" height="1"/>'
+            +   '</g>'
+            +   '<g fill="#ff8030">'
+            +     '<rect x="3"  y="14" width="1" height="1"/><rect x="9" y="14" width="1" height="1"/>'
+            +     '<rect x="4"  y="15" width="1" height="1"/><rect x="8" y="15" width="1" height="1"/>'
+            +   '</g>'
+            +   '<g fill="#ffd166">'
+            +     '<rect x="4" y="14" width="5" height="1"/>'
+            +     '<rect x="5" y="15" width="3" height="1"/>'
+            +     '<rect x="6" y="16" width="1" height="1"/>'
+            +   '</g>'
+            +   '<rect x="6" y="14" width="1" height="2" fill="#ffffff"/>'
+            + '</svg>';
+        }
+
+        function spawnRocket() {
+          // Stop spawning once the loading screen is gone.
+          if (document.body.classList.contains("loaded")) return;
+
+          var red = Math.random() < 0.3;
+          var el = document.createElement("div");
+          el.className = "rocket";
+          el.innerHTML = rocketSvg(red);
+
+          var W = window.innerWidth;
+          var H = window.innerHeight;
+          var margin = 80;
+
+          // Pick a random edge to enter from + a random exit point on a
+          // different edge, so the path always crosses the screen.
+          var entry = Math.floor(Math.random() * 4);
+          var sx, sy, ex, ey;
+          switch (entry) {
+            case 0: // top -> bottom-ish
+              sx = Math.random() * W;
+              sy = -margin;
+              ex = Math.random() * W;
+              ey = H + margin;
+              break;
+            case 1: // right -> left-ish
+              sx = W + margin;
+              sy = Math.random() * H;
+              ex = -margin;
+              ey = Math.random() * H;
+              break;
+            case 2: // bottom -> top-ish
+              sx = Math.random() * W;
+              sy = H + margin;
+              ex = Math.random() * W;
+              ey = -margin;
+              break;
+            default: // left -> right-ish
+              sx = -margin;
+              sy = Math.random() * H;
+              ex = W + margin;
+              ey = Math.random() * H;
+              break;
+          }
+
+          // Rotate so the rocket's nose (up in the sprite) aligns with the
+          // flight vector. atan2 gives the angle of the vector; we add 90°
+          // because the sprite points -Y in its own frame.
+          var angleRad = Math.atan2(ey - sy, ex - sx) + Math.PI / 2;
+          var angleDeg = angleRad * 180 / Math.PI;
+
+          // Duration scales with distance so faster planes don't seem to
+          // teleport across — 4 to 6 seconds across most paths.
+          var dist = Math.hypot(ex - sx, ey - sy);
+          var duration = Math.max(3.5, Math.min(6.5, dist / 220));
+
+          el.style.left = sx + "px";
+          el.style.top = sy + "px";
+          el.style.transform =
+            "translate(-50%, -50%) rotate(" + angleDeg + "deg)";
+          spawner.appendChild(el);
+
+          // Force the browser to commit the start position before we
+          // animate to the end — otherwise the transition skips.
+          // eslint-disable-next-line no-unused-expressions
+          el.offsetHeight;
+          el.style.transition =
+            "left " + duration + "s linear, top " + duration + "s linear";
+          el.style.left = ex + "px";
+          el.style.top = ey + "px";
+
+          setTimeout(function () { el.remove(); }, duration * 1000 + 100);
+        }
+
+        // First one straight away so the screen isn't empty.
+        spawnRocket();
+        var spawnInterval = setInterval(function () {
+          if (document.body.classList.contains("loaded")) {
+            clearInterval(spawnInterval);
+            return;
+          }
+          spawnRocket();
+        }, 1400);
+      })();
+    </script>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

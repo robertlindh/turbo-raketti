@@ -14,7 +14,7 @@ import {
 } from "./highscores";
 import {
   unlockAudio, startMenuMusic, stopMenuMusic, startVolumeWatcher,
-  isMusicEnabled, setMusicEnabled,
+  isMusicEnabled, setMusicEnabled, prebuildMusicBuffer,
 } from "../audio/Audio";
 
 type Scene = "loading" | "menu" | "game" | "postgame";
@@ -51,12 +51,15 @@ export class App {
     // Kick off Rapier WASM and the music buffer rendering in parallel —
     // we don't await them here so the loading screen can show "press any
     // key" instantly. Browsers won't let us *hear* music until the user
-    // interacts, but we can already render the audio buffer offline.
+    // interacts, but we can already render the audio buffer offline so
+    // it's sitting in memory the instant they tap.
     const rapierReady = RAPIER.init();
+    void prebuildMusicBuffer();
     document.body.classList.add("ready");
     await this.waitForUserGesture();
     // Gesture unlocked the audio context — fire up volume + music now,
-    // so the music plays over the rest of the loading screen.
+    // so the music plays over the rest of the loading screen. The buffer
+    // is already rendered so the loop starts within a frame.
     unlockAudio();
     startVolumeWatcher();
     void startMenuMusic();

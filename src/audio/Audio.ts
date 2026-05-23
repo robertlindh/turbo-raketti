@@ -506,6 +506,20 @@ async function buildMusicBuffer(c: AudioContext): Promise<AudioBuffer> {
   return musicBufferPromise;
 }
 
+/** Kick off the offline rendering of the menu music buffer ahead of time.
+ *  This does NOT play anything — it just runs the OfflineAudioContext so
+ *  the buffer is sitting in memory the moment the user gesture lets us
+ *  actually play. Safe to call repeatedly; resolves immediately if the
+ *  buffer is already built or rendering. Browsers happily create an
+ *  AudioContext in suspended state without a gesture, so we can use its
+ *  sampleRate for the offline render. */
+export async function prebuildMusicBuffer(): Promise<void> {
+  if (musicBuffer || musicBufferPromise) return;
+  const c = getCtx();
+  if (!c) return;
+  await buildMusicBuffer(c);
+}
+
 /** Start the menu / loading music if it isn't already playing. Idempotent.
  *  Fades in over ~600ms; safe to call before the audio context exists.
  *  Respects the user's music-enabled toggle — if music is disabled, this
