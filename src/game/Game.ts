@@ -164,10 +164,14 @@ export class Game {
   /** True once a winner / finisher has been determined — gates the callback
    *  so we only fire it once and don't tick further game logic. */
   private matchEnded = false;
-  /** Pre-match countdown timer. >0 means "still counting down" — input is
-   *  blocked and matchElapsed doesn't tick. The HUD turns this into a big
-   *  "3 / 2 / 1 / GO!" overlay. */
+  /** Pre-match countdown timer. >0 means "still counting down 3-2-1" —
+   *  input is blocked and matchElapsed doesn't tick. The HUD turns this
+   *  into a big "3 / 2 / 1 / GO!" overlay. */
   private countdownRemaining = 0;
+  /** Seconds the "GO!" splash stays visible after the count hits zero.
+   *  Input is unblocked the moment this starts, so the player can take off
+   *  the instant they see GO!. */
+  private goLinger = 0;
   /** DOM element for the countdown overlay, populated while it counts. */
   private countdownEl: HTMLElement | null = null;
 
@@ -591,51 +595,60 @@ export class Game {
     this.countdownEl = el;
   }
 
-  /** Advance the countdown timer, swap the visible number on each second
-   *  boundary, and remove the overlay when it hits zero. */
+  /** Advance the 3-2-1 countdown. When the remaining time crosses zero we
+   *  flip into the "GO!" linger phase, which is owned by `updateGoLinger`. */
   private updateCountdown(dt: number): void {
     const prevWhole = Math.ceil(this.countdownRemaining);
     this.countdownRemaining -= dt;
-    const nextWhole = Math.ceil(this.countdownRemaining);
     const el = this.countdownEl;
     if (!el) return;
 
     if (this.countdownRemaining <= 0) {
-      // Done — flash "GO!" briefly then remove.
-      if (el.textContent !== "GO!") {
-        el.textContent = "GO!";
-        el.style.color = "#9eff8e";
-        el.style.fontSize = "220px";
-        // Bright chime on go.
-        playSpawn();
-      }
-      // Linger ~0.4s then fade out so the player gets a visible "GO!".
-      this.countdownRemaining = 0;
-      this.countdownFinishLinger -= dt;
-      if (this.countdownFinishLinger <= 0) {
-        el.style.opacity = "0";
-        setTimeout(() => el.remove(), 300);
-        this.countdownEl = null;
-      }
-      return;
-    }
-
-    // Tick — when the integer second changes, play a chime and reset the
-    // scale "pop" animation so each number lands punchier.
-    if (nextWhole !== prevWhole) {
-      el.textContent = String(nextWhole);
-      el.style.transform = "translate(-50%, -50%) scale(1.4)";
-      // Brief reset so the scale anim plays. requestAnimationFrame is
-      // enough — the CSS transition kicks in on the next frame.
+      // Transition into the GO! splash. Set a short linger; the next
+      // tick will drive its fade-out through updateGoLinger.
+      el.textContent = "GO!";
+      el.style.color = "#9eff8e";
+      el.style.fontSize = "220px";
+      el.style.transform = "translate(-50%, -50%) scale(1.2)";
       requestAnimationFrame(() => {
         el.style.transform = "translate(-50%, -50%) scale(1)";
       });
-      playWallHit(); // a soft click on each count
+      playSpawn();
+      this.countdownRemaining = 0;
+      this.goLinger = 0.7;
+      return;
+    }
+
+    const nextWhole = Math.ceil(this.countdownRemaining);
+    // Tick — when the integer second changes, swap the number and pop
+    // the scale so each count lands punchier.
+    if (nextWhole !== prevWhole && nextWhole > 0) {
+      el.textContent = String(nextWhole);
+      el.style.transform = "translate(-50%, -50%) scale(1.4)";
+      requestAnimationFrame(() => {
+        el.style.transform = "translate(-50%, -50%) scale(1)";
+      });
+      playWallHit();
     }
   }
-  /** Set to a small positive value when countdown hits 0 so "GO!" lingers
-   *  for a brief moment before fading. */
-  private countdownFinishLinger = 0.45;
+
+  /** Fade out and remove the GO! splash after a short linger so the player
+   *  registers it but isn't stuck looking at it. */
+  private updateGoLinger(dt: number): void {
+    this.goLinger -= dt;
+    const el = this.countdownEl;
+    if (!el) {
+      this.goLinger = 0;
+      return;
+    }
+    if (this.goLinger <= 0) {
+      el.style.opacity = "0";
+      // Capture for the timeout so a re-entrant call doesn't double-remove.
+      const toRemove = el;
+      this.countdownEl = null;
+      setTimeout(() => toRemove.remove(), 300);
+    }
+  }
 
   /** Tear down the Pixi canvas + all DOM the game added (scoreboard, settings
    *  panel, etc.) so the menu can render a clean slate. Safe to call twice. */
@@ -655,11 +668,14 @@ export class Game {
     this.lastTime = now;
     if (dt > 0.25) dt = 0.25;
 
-    // Countdown phase — block matchElapsed and update the overlay.
+    // Countdown phase — while > 0 we block input + matchElapsed and pulse
+    // the digits. Once it hits zero the GO! splash lingers briefly while
+    // the match itself starts ticking.
     if (this.countdownRemaining > 0) {
       this.updateCountdown(dt);
-    } else if (!this.matchEnded) {
-      this.matchElapsed += dt;
+    } else {
+      if (this.goLinger > 0) this.updateGoLinger(dt);
+      if (!this.matchEnded) this.matchElapsed += dt;
     }
 
     this.accumulator += dt;

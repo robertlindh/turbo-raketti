@@ -48,26 +48,28 @@ export class App {
 
   async start() {
     this.showLoading();
-    // Kick off the heavy bootstrap (Rapier WASM) in parallel — we don't
-    // await it here so the loading screen can show the "press any key"
-    // prompt instantly. Browsers won't let us play sound until the user
-    // has interacted with the page, so the prompt is what gates audio.
+    // Kick off Rapier WASM and the music buffer rendering in parallel —
+    // we don't await them here so the loading screen can show "press any
+    // key" instantly. Browsers won't let us *hear* music until the user
+    // interacts, but we can already render the audio buffer offline.
     const rapierReady = RAPIER.init();
-    // Show "press to continue" immediately so the user can dismiss the
-    // splash and the music starts as soon as the loading screen is up.
     document.body.classList.add("ready");
     await this.waitForUserGesture();
-    // The gesture has unlocked autoplay — kick off the master volume
-    // watcher and the menu music. Music starts now, while Rapier might
-    // still be downloading; if Rapier wasn't cached the player gets a
-    // few seconds of music over the loading screen.
+    // Gesture unlocked the audio context — fire up volume + music now,
+    // so the music plays over the rest of the loading screen.
     unlockAudio();
     startVolumeWatcher();
     void startMenuMusic();
-    // Now wait for the bootstrap promise to finish before showing the
-    // menu (it's usually done by the time the user has clicked, but on
-    // a cold cache it can still be pending).
+    // Hold the loading screen for at least 1.6s after the gesture so the
+    // music gets to actually play on the splash even when Rapier is
+    // cached and would otherwise be ready in milliseconds.
+    const minDwellMs = 1600;
+    const dwellStart = performance.now();
     await rapierReady;
+    const elapsed = performance.now() - dwellStart;
+    if (elapsed < minDwellMs) {
+      await new Promise((r) => setTimeout(r, minDwellMs - elapsed));
+    }
     this.hideLoading();
     this.showMenu();
   }
