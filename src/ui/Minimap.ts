@@ -46,7 +46,7 @@ export class Minimap {
     this.canvas.height = heightPx;
     this.canvas.style.cssText = `
       position: fixed;
-      bottom: 12px;
+      top: 12px;
       left: 12px;
       z-index: 60;
       background: rgba(8, 6, 16, 0.78);

@@ -194,9 +194,17 @@ export function orInputs(a: ShipInput, b: ShipInput): ShipInput {
 // currently over it independently of the others.
 // ──────────────────────────────────────────────────────────────────────────
 
+/** True only when the primary pointer is a touch input — phones and
+ *  tablets. Touchscreen laptops report `ontouchstart` but their primary
+ *  pointer is still a mouse, so `(pointer: coarse)` correctly excludes
+ *  them. Falls back to the legacy heuristic on browsers without
+ *  matchMedia (very old or non-standard environments). */
 export function hasTouch(): boolean {
-  return typeof window !== "undefined"
-    && ("ontouchstart" in window || (navigator.maxTouchPoints ?? 0) > 0);
+  if (typeof window === "undefined") return false;
+  if (typeof window.matchMedia === "function") {
+    return window.matchMedia("(pointer: coarse)").matches;
+  }
+  return "ontouchstart" in window || (navigator.maxTouchPoints ?? 0) > 0;
 }
 
 type TouchButtonId = "left" | "right" | "thrust" | "fire" | "special";
