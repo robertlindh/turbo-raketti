@@ -173,14 +173,15 @@ export const lavanos: Level = {
     { type: "skull",   x: -100, y: -30 },
     { type: "skull",   x: 100, y: -30 },
   ],
-  // Race checkpoints — a figure-8 around the central narrows so the racing
-  // line forces players to commit to one side, navigate the choke, and
-  // unwind through the other chamber.
+  // Race checkpoints — a figure-8 threading the narrows in both
+  // directions. Points 2 and 4 sit inside the central passage between
+  // the stalactite (tip at y=-16) and the stalagmite (tip at y=24),
+  // safely clear of both obstacles and the boundary ceiling (y=-32).
   checkpoints: [
     { x: -96, y: 0 },    // 1 — middle of left chamber
-    { x: 0, y: -52 },    // 2 — squeezed through the upper throat
+    { x: 0, y: -8 },     // 2 — upper half of the central throat
     { x: 96, y: 0 },     // 3 — middle of right chamber
-    { x: 0, y: 50 },     // 4 — past the stalagmite base
+    { x: 0, y: 16 },     // 4 — lower half of the central throat
   ],
   // Lava pools on the cavern floor — slowing zones where flying through is
   // costly. Two pools, one per chamber, leaving the central island reachable
