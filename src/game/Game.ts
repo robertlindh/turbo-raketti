@@ -270,12 +270,11 @@ export class Game {
       height: this.app.canvas.clientHeight,
     }));
     this.camera.zoom = 28;
-    // Race-style modes pull the camera back so racers see the next gate.
-    // Wave (combat solo) keeps the close-in view since hitting bots needs
-    // precision rather than course awareness.
-    this.camera.setWideMode(
-      this.config.mode === "time-trial" || this.config.mode === "race",
-    );
+    // Wide camera only for 2P race (so both pilots can see the whole
+    // course at once). Time-trial uses the close-in single-target
+    // follow-zoom so the solo pilot feels their speed and reads gates
+    // through the minimap. Wave (combat solo) is also close-in.
+    this.camera.setWideMode(this.config.mode === "race");
 
     this.physics = new PhysicsWorld({ x: 0, y: SETTINGS.gravity });
 
