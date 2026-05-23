@@ -1,11 +1,11 @@
 import { defineConfig } from "vite";
 import { resolve } from "node:path";
 
-// GitHub Pages serves the site under https://<user>.github.io/turbo-rakketti/
-// so all built asset URLs must be prefixed with /turbo-rakketti/. During dev
+// GitHub Pages serves the site under https://<user>.github.io/turbo-raketti/
+// so all built asset URLs must be prefixed with /turbo-raketti/. During dev
 // (`npm run dev`) base stays "/" so localhost links don't break.
 export default defineConfig(({ command }) => ({
-  base: command === "build" ? "/turbo-rakketti/" : "/",
+  base: command === "build" ? "/turbo-raketti/" : "/",
   server: {
     port: 5173,
     open: true,

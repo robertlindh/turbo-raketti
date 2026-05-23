@@ -12,7 +12,9 @@ class CheckpointView {
   readonly view: Container;
   /** Outer pulsing ring per player — keyed by player index. */
   private rings: Graphics[] = [];
-  /** Always-on base ring + number. */
+  /** Soft glow fill underneath everything — pulses with the base ring. */
+  private glow: Graphics;
+  /** Always-on gold base ring + number. */
   private base: Graphics;
   private numberLabel: Graphics;
   private t = 0;
@@ -23,15 +25,24 @@ class CheckpointView {
     this.view.x = x;
     this.view.y = y;
 
-    // Base ring — neutral white, always visible.
+    // 1. Soft outer glow disc — translucent gold, pulses scale+alpha.
+    this.glow = new Graphics();
+    this.glow.circle(0, 0, CHECKPOINT_RADIUS * 1.4)
+      .fill({ color: 0xffd166, alpha: 0.10 });
+    this.glow.circle(0, 0, CHECKPOINT_RADIUS * 1.05)
+      .fill({ color: 0xffd166, alpha: 0.18 });
+    this.view.addChild(this.glow);
+
+    // 2. Bold gold ring — the "gate" itself. Two concentric strokes give
+    //    it visual weight at gameplay zoom (~22 px/m).
     this.base = new Graphics();
     this.base.circle(0, 0, CHECKPOINT_RADIUS)
-      .stroke({ color: 0xffffff, width: 0.18, alpha: 0.55 });
-    this.base.circle(0, 0, CHECKPOINT_RADIUS - 0.4)
-      .stroke({ color: 0xffffff, width: 0.08, alpha: 0.3 });
+      .stroke({ color: 0xffd166, width: 0.45, alpha: 1 });
+    this.base.circle(0, 0, CHECKPOINT_RADIUS - 0.5)
+      .stroke({ color: 0xffffff, width: 0.18, alpha: 0.85 });
     this.view.addChild(this.base);
 
-    // Number — a chunky pixel-art digit (1-9) in the middle.
+    // 3. Number — a chunky pixel-art digit (1-9) in the middle.
     this.numberLabel = new Graphics();
     this.drawDigit(this.numberLabel, index + 1);
     this.view.addChild(this.numberLabel);
@@ -42,7 +53,7 @@ class CheckpointView {
   /** Draw a 1-9 pixel digit centred on (0, 0). Each digit is on a 3×5 grid
    *  of "pixels" 0.4m × 0.4m. */
   private drawDigit(g: Graphics, n: number) {
-    const PX = 0.32;
+    const PX = 0.42;
     const digits: Record<number, string[]> = {
       1: ["010", "110", "010", "010", "111"],
       2: ["111", "001", "111", "100", "111"],
@@ -60,7 +71,7 @@ class CheckpointView {
       for (let x = 0; x < w; x++) {
         if (rows[y][x] === "1") {
           g.rect((x - w / 2) * PX, (y - h / 2) * PX, PX, PX)
-            .fill({ color: 0xffffff, alpha: 0.95 });
+            .fill({ color: 0xffd166, alpha: 1 });
         }
       }
     }
@@ -71,21 +82,31 @@ class CheckpointView {
   update(dt: number, nextForPlayers: { color: number }[]) {
     this.t += dt;
 
+    // Pulse the always-on glow + base ring so every gate is visible and
+    // alive, not just the "next" one. The active player's gate pulses
+    // harder (see below).
+    const breath = (Math.sin(this.t * 2.6) + 1) * 0.5; // 0..1
+    const glowScale = 1 + breath * 0.18;
+    this.glow.scale.set(glowScale, glowScale);
+    this.glow.alpha = 0.55 + breath * 0.45;
+    const baseScale = 1 + breath * 0.04;
+    this.base.scale.set(baseScale, baseScale);
+
     // Remove old rings.
     for (const r of this.rings) r.destroy();
     this.rings = [];
 
     // For each player whose next checkpoint is this one, draw a big glowing
-    // ring tinted to that player's colour.
-    const pulse = 1 + Math.sin(this.t * 3.5) * 0.06;
+    // ring tinted to that player's colour — that's the "target" cue.
+    const targetPulse = 1 + Math.sin(this.t * 3.5) * 0.10;
     let stack = 0;
     for (const { color } of nextForPlayers) {
       const r = new Graphics();
-      const outer = CHECKPOINT_RADIUS + 0.4 + stack * 0.3;
+      const outer = CHECKPOINT_RADIUS + 0.6 + stack * 0.4;
       r.circle(0, 0, outer)
-        .stroke({ color, width: 0.45, alpha: 0.85 });
-      r.circle(0, 0, outer + 0.5).fill({ color, alpha: 0.07 });
-      r.scale.set(pulse, pulse);
+        .stroke({ color, width: 0.55, alpha: 0.95 });
+      r.circle(0, 0, outer + 0.6).fill({ color, alpha: 0.12 });
+      r.scale.set(targetPulse, targetPulse);
       this.view.addChild(r);
       this.rings.push(r);
       stack++;
