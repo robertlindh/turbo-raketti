@@ -268,6 +268,85 @@ export function makeBulletTexture(_renderer: Renderer, color: number): Texture {
 }
 
 // ---------------------------------------------------------------------------
+// Homing missile — a chunky little pixel-art rocket. Nose points -Y so
+// it lines up with the ship's "forward" convention (caller adds +π/2 to
+// velocity heading). 5 wide × 9 tall, with palette:
+//   W  white nose tip
+//   M  metallic mid-grey body
+//   H  highlight on the body's left side (lit from upper-left)
+//   D  darker shadow on the right side of the body
+//   F  fin (warm tinted by `color`)
+//   o  orange exhaust outer
+//   y  yellow exhaust inner
+//   w  bright white flame core
+// The colour parameter tints the warning stripe + the fins so each pilot's
+// missiles read in their player colour at a glance.
+// ---------------------------------------------------------------------------
+
+export function makeMissileTexture(_renderer: Renderer, color: number): Texture {
+    const W = 5;
+    const H = 9;
+    const { canvas, ctx } = makeCanvas(W, H);
+    const accent = intToHex(color);
+    const accentDark = tintTowards(accent, "#1a0808");
+
+    // Layout (y, x). "." = transparent.
+    //   y=0: ..W..   (nose tip)
+    //   y=1: .HMD.   (head — lit / mid / shadow)
+    //   y=2: .HMD.
+    //   y=3: HHMDD   (warning stripe row — accented)
+    //   y=4: .HMD.
+    //   y=5: FHMDF   (fins flare out)
+    //   y=6: .HMD.
+    //   y=7: .oyo.   (flame outer)
+    //   y=8: ..w..   (flame core)
+    const body = "#8a929e";       // M  mid metallic
+    const hi   = "#c8d0db";       // H  highlight
+    const sh   = "#4a525e";       // D  shadow
+    const nose = "#ffffff";       // W
+    const flameO = "#ff6020";     // o
+    const flameI = "#ffd040";     // y
+    const flameC = "#ffffff";     // w
+
+    // Nose
+    px(ctx, 2, 0, nose);
+
+    // Head and body — three vertical columns of hi / mid / shadow.
+    const drawTri = (y: number) => {
+        px(ctx, 1, y, hi);
+        px(ctx, 2, y, body);
+        px(ctx, 3, y, sh);
+    };
+    drawTri(1);
+    drawTri(2);
+
+    // Warning stripe row — replace highlight + shadow with accent variants
+    // so the player colour clearly bands the missile mid-body.
+    px(ctx, 0, 3, accent);
+    px(ctx, 1, 3, accent);
+    px(ctx, 2, 3, body);
+    px(ctx, 3, 3, accentDark);
+    px(ctx, 4, 3, accentDark);
+
+    drawTri(4);
+
+    // Fins — small tabs sticking out at the body's widest point.
+    px(ctx, 0, 5, accent);
+    drawTri(5);
+    px(ctx, 4, 5, accentDark);
+
+    drawTri(6);
+
+    // Flame — three pixels of warm exhaust under the engine.
+    px(ctx, 1, 7, flameO);
+    px(ctx, 2, 7, flameI);
+    px(ctx, 3, 7, flameO);
+    px(ctx, 2, 8, flameC);
+
+    return canvasToTexture(canvas);
+}
+
+// ---------------------------------------------------------------------------
 // Crystal sprite — small floor decoration. 3 wide × 4 tall: bright top tapers
 // to a darker base. Matches the cyan crystals on the floor in drawStyle3().
 // ---------------------------------------------------------------------------

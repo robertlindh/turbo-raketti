@@ -7,7 +7,7 @@
 import RAPIER from "@dimforge/rapier2d-compat";
 import { Container, Renderer, Sprite } from "pixi.js";
 import type { PhysicsWorld } from "./PhysicsWorld";
-import { makeBulletTexture } from "../render/sprites";
+import { makeMissileTexture } from "../render/sprites";
 
 const MISSILE_RADIUS = 0.10;
 /** Cruise speed (m/s) the missile tries to hold. */
@@ -77,17 +77,23 @@ export class HomingMissile {
       .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
     this.collider = physics.world.createCollider(colDesc, this.body);
 
-    // Reuse the bullet texture (single white pixel) — the missile is
-    // distinguishable by its smoky trail and warm glow rather than its
-    // own art at this resolution.
-    const texture = makeBulletTexture(renderer, cfg.color);
+    // Pixel-art mini-rocket — 5×9 sprite drawn by makeMissileTexture. The
+    // texture's nose points up the -Y axis, so we add +π/2 in step() to
+    // align the heading with velocity. Anchor at (0.5, 0.7) so the rocket
+    // rotates around its engine, not its centre — that makes the trail
+    // emit from behind it as you'd expect on a real missile.
+    const texture = makeMissileTexture(renderer, cfg.color);
     this.view = new Sprite(texture);
     this.view.anchor.set(0.5, 0.5);
-    // Slightly larger than a bullet sprite so the head reads as a missile.
-    this.view.scale.set(0.18, 0.18);
-    this.view.tint = cfg.color;
-    this.view.blendMode = "add";
+    // Scale: with a 5×9 texture and 0.06 m per texel, the missile renders
+    // ~0.3 × 0.54 m — clearly read as a small craft next to the 0.85 m
+    // ship, but small enough not to clutter dogfights.
+    this.view.scale.set(0.06, 0.06);
     parent.addChild(this.view);
+
+    // Point the nose along the initial velocity so the first frame doesn't
+    // show the rocket sideways before step() kicks in.
+    this.view.rotation = Math.atan2(cfg.vy, cfg.vx) + Math.PI / 2;
 
     this.prev = { x: cfg.x, y: cfg.y };
     this.view.x = cfg.x;

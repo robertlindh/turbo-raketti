@@ -63,11 +63,10 @@ export class Bullet {
     this.view = new Sprite(texture);
     this.view.anchor.set(0.5, 0.5);
     this.view.scale.set(BULLET_SPRITE_METRES_PER_PX, BULLET_SPRITE_METRES_PER_PX);
-    // Additive blend so the bullet reads as a hot point light against the
-    // dark cave, matching the trail particles drawn behind it.
-    this.view.blendMode = "add";
-    // Orient sprite forward (texture head points -Y; rotate to align with velocity).
-    this.view.rotation = Math.atan2(cfg.vy, cfg.vx) + Math.PI / 2;
+    // Tint the white pixel toward the firing ship's colour so red/blue
+    // bullets are distinguishable on screen. Normal blend (no additive)
+    // keeps the bullet reading as a single hard pixel rather than a glow.
+    this.view.tint = cfg.color;
     parent.addChild(this.view);
 
     this.prev = { x: cfg.x, y: cfg.y };

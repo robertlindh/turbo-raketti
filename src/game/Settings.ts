@@ -101,7 +101,10 @@ export const SETTINGS: GameSettings = {
   powerupsMax: 3,
 
   crtEnabled: 0,
-  bulletTrail: 1,
+  // Off by default — bullets read better as hard pixel-art points without
+  // a trailing comet streak. Players who want the streak can flip it in
+  // the settings panel.
+  bulletTrail: 0,
 
   gameMode: 0,
   raceTargetLaps: 3,
