@@ -1046,11 +1046,13 @@ export class Game {
         }
       }
 
-      // Speed boost — extra thrust impulse along facing if active.
+      // Speed boost — doubles the base thrust by adding a 1.0× impulse
+      // on top of the ship's own thrust (so effective thrust = 2× while
+      // the boost is active).
       if (ship.thrustOn && p.activePowerUps.has("speed")) {
         const a = ship.body.rotation();
-        const fx = Math.cos(a) * SETTINGS.shipThrust * 0.5 * PHYS_DT;
-        const fy = Math.sin(a) * SETTINGS.shipThrust * 0.5 * PHYS_DT;
+        const fx = Math.cos(a) * SETTINGS.shipThrust * 1.0 * PHYS_DT;
+        const fy = Math.sin(a) * SETTINGS.shipThrust * 1.0 * PHYS_DT;
         const mass = ship.body.mass();
         ship.body.applyImpulse({ x: fx * mass, y: fy * mass }, true);
       }
