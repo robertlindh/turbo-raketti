@@ -9,6 +9,8 @@ import RAPIER from "@dimforge/rapier2d-compat";
 import { Game } from "../game/Game";
 import type { GameResult, GameMode } from "../game/Game";
 import { LEVELS } from "../level/levels";
+import { logEvent } from "./firebase";
+import { hasTouch as hasTouchDevice } from "../game/Input";
 import {
   getHighScores, qualifies, addScore, fetchHighScoresAsync,
   formatTime, type HighScore,
@@ -84,6 +86,9 @@ export class App {
     }
     this.hideLoading();
     this.showMenu();
+    logEvent("app_loaded", {
+      touch: hasTouchDevice() ? "yes" : "no",
+    });
   }
 
   private waitForUserGesture(): Promise<void> {
@@ -180,10 +185,15 @@ export class App {
       ?.addEventListener("click", () => this.showMenu());
     this.focusFirst();
     this.startMenuGamepadNav();
+    logEvent("instructions_opened");
   }
 
   private startGame(): void {
     this.persistSelection();
+    logEvent("match_start", {
+      mode: this.selectedMode,
+      level: this.selectedLevelId,
+    });
     // Silence the menu loop — the game's own SFX takes over from here.
     stopMenuMusic();
     this.stopMenuGamepadNav();
@@ -218,6 +228,7 @@ export class App {
     this.bindPostgame(result);
     this.focusFirst();
     this.startMenuGamepadNav();
+    logEvent("match_finish", buildMatchFinishParams(result));
     // Pull the global leaderboard for this mode + level so the postgame
     // shows the latest top 10 once the network responds.
     void this.refreshPostgame(result);
@@ -251,6 +262,7 @@ export class App {
       ?.addEventListener("click", (e) => {
         // Let the link navigate normally, but persist current selection first.
         this.persistSelection();
+        logEvent("editor_opened");
         void e; // no-op; default action proceeds
       });
     this.screens.querySelector<HTMLButtonElement>("#open-instructions")
@@ -687,6 +699,45 @@ function modeLabel(mode: GameMode): string {
        : mode === "race"       ? "Race 2P"
        : mode === "wave"       ? "Skjut bottar"
        :                         "Duell";
+}
+
+/** Build a flat key/value record for Firebase Analytics from a match
+ *  result. Analytics events are happiest with primitive values and a
+ *  consistent shape, so each mode flattens its own fields. */
+function buildMatchFinishParams(
+  result: GameResult,
+): Record<string, string | number | boolean> {
+  const base = { mode: result.mode, level: result.levelId };
+  if (result.mode === "time-trial") {
+    return { ...base, time_seconds: round2(result.timeSeconds) };
+  }
+  if (result.mode === "race") {
+    return {
+      ...base,
+      time_seconds: round2(result.timeSeconds),
+      winner: result.winnerIndex + 1,
+      loser_laps: result.loserLaps,
+    };
+  }
+  if (result.mode === "wave") {
+    return {
+      ...base,
+      kills: result.score,
+      survived_seconds: round2(result.survivedSeconds),
+      completed: result.score >= 5,
+    };
+  }
+  // Duel
+  return {
+    ...base,
+    winner: result.winnerIndex + 1,
+    winner_score: result.winnerScore,
+    loser_score: result.loserScore,
+  };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 function escapeHtml(s: string): string {
