@@ -86,6 +86,11 @@ export class Minimap {
     players: PlayerDot[],
     powerups: PowerUpDot[],
     mines: MineDot[],
+    /** Index of the checkpoint each player is currently racing toward, or
+     *  `null` if that player is dead / not racing. When provided, the
+     *  matching gates are highlighted on the minimap so the racer always
+     *  knows where to head next. */
+    nextCheckpointPerPlayer?: Array<number | null>,
   ): void {
     // Throttle to ~10 Hz to keep CPU cost negligible.
     this.updateAccum += dt;
@@ -135,14 +140,51 @@ export class Minimap {
       ctx.stroke();
     }
 
-    // Checkpoints — small white rings.
+    // Checkpoints — gold gates so they pop against the rock. Players who
+    // are currently racing toward a specific gate get that gate filled
+    // (and pulsed slightly) in their colour.
     if (this.level.checkpoints) {
-      ctx.strokeStyle = "rgba(255,255,255,0.65)";
-      ctx.lineWidth = 1;
-      for (const cp of this.level.checkpoints) {
+      // Build a set of (checkpointIndex → player colours that need it next)
+      // so a single gate can be tinted with whoever's about to hit it.
+      const nextFor = new Map<number, number[]>();
+      if (nextCheckpointPerPlayer) {
+        for (let pi = 0; pi < nextCheckpointPerPlayer.length; pi++) {
+          const idx = nextCheckpointPerPlayer[pi];
+          if (idx == null) continue;
+          const colour = players[pi]?.color ?? 0xffffff;
+          const list = nextFor.get(idx) ?? [];
+          list.push(colour);
+          nextFor.set(idx, list);
+        }
+      }
+      // Slow pulse — gold gates breathe so the eye is drawn to them.
+      const pulse = 0.85 + 0.15 * Math.sin(performance.now() * 0.005);
+      for (let i = 0; i < this.level.checkpoints.length; i++) {
+        const cp = this.level.checkpoints[i];
+        const cx = this.wx(cp.x);
+        const cy = this.wy(cp.y);
+        const r = 5;
+        const targetColours = nextFor.get(i);
+        // Base ring — bright gold.
+        ctx.strokeStyle = "rgba(255, 209, 102, 0.95)";
+        ctx.lineWidth = 1.4;
         ctx.beginPath();
-        ctx.arc(this.wx(cp.x), this.wy(cp.y), 3, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r * (targetColours ? pulse : 1), 0, Math.PI * 2);
         ctx.stroke();
+        // Inner dot — fills the "current" gate in the racer's colour;
+        // otherwise leaves a small gold dot.
+        if (targetColours && targetColours.length > 0) {
+          ctx.fillStyle =
+            `#${targetColours[0].toString(16).padStart(6, "0")}`;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r * 0.45 * pulse, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = "rgba(255, 209, 102, 0.5)";
+          ctx.beginPath();
+          ctx.arc(cx, cy, 1.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
 

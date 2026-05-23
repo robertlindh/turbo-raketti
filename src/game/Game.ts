@@ -265,7 +265,12 @@ export class Game {
     this.worldLayer.addChild(this.wreckage);
 
     // Power-up system shares the world layer so pickups bob in cave space.
-    this.powerups = new PowerUpSystem(this.worldLayer, level);
+    // Time-trial gets a speed-only pickup pool — frags, shields, mines and
+    // homing missiles are noise when you're racing against the clock.
+    const allowedPowerUps = this.config.mode === "time-trial"
+      ? (["speed"] as const).slice()
+      : undefined;
+    this.powerups = new PowerUpSystem(this.worldLayer, level, allowedPowerUps);
 
     // Racing — always on in time-trial mode (and only mode where it counts
     // for win condition). For duel, expose it only if both the level and
@@ -631,7 +636,14 @@ export class Game {
       x: m.x, y: m.y,
       ownerColor: this.players[m.ownerIndex]?.cfg.color ?? 0xffffff,
     }));
-    this.minimap.update(dt, players, powerups, mines);
+    // Pass each player's next-checkpoint index so the minimap can
+    // highlight the gate they're racing toward.
+    const nextCps = this.racing
+      ? this.players.map((p) =>
+          p.alive ? this.racing!.nextFor(p.cfg.index) : null,
+        )
+      : undefined;
+    this.minimap.update(dt, players, powerups, mines, nextCps);
   }
 
   private powerupColor(type: string): number {

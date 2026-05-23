@@ -17,13 +17,20 @@ export class PowerUpSystem {
   /** Polygon-cached for point-in-polygon tests during random spawn. */
   private boundary: Point[];
   private obstacles: Point[][];
+  /** Which power-up types the spawner is allowed to roll. Caller can pass
+   *  e.g. `["speed"]` in time-trial to restrict pickups to speed boosts. */
+  private allowedTypes: PowerUpType[];
 
   constructor(
     private parent: Container,
     private level: Level,
+    allowedTypes?: PowerUpType[],
   ) {
     this.boundary = level.boundary;
     this.obstacles = level.obstacles;
+    this.allowedTypes = allowedTypes && allowedTypes.length > 0
+      ? allowedTypes
+      : ALL_TYPES;
     // Stagger initial spawn so the first power-up appears quickly.
     this.spawnTimer = 1.5;
   }
@@ -44,7 +51,7 @@ export class PowerUpSystem {
     if (this.spawnTimer <= 0 && this.active.length < SETTINGS.powerupsMax) {
       const spot = this.findSpawnPoint();
       if (spot) {
-        const type = ALL_TYPES[Math.floor(Math.random() * ALL_TYPES.length)];
+        const type = this.allowedTypes[Math.floor(Math.random() * this.allowedTypes.length)];
         this.active.push(new PowerUpEntity(this.parent, type, spot.x, spot.y));
       }
       this.spawnTimer = SETTINGS.powerupSpawnSec * (0.7 + Math.random() * 0.6);
