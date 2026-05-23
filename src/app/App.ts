@@ -241,7 +241,7 @@ export class App {
         if (result.mode === "time-trial" || result.mode === "race") {
           entry = { initials, value: result.timeSeconds };
         } else if (result.mode === "wave") {
-          entry = { initials, value: result.score };
+          entry = { initials, value: result.survivedSeconds };
         } else {
           entry = { initials, value: result.winnerScore, loser: result.loserScore };
         }
@@ -489,9 +489,16 @@ function renderPostgame(
   let value: number;
 
   if (result.mode === "wave") {
-    title = "Combat över!";
-    detail = `Bottar nedskjutna: <strong>${result.score}</strong> · överlevde ${formatTime(result.survivedSeconds)}`;
-    value = result.score;
+    if (result.score >= 5) {
+      title = "Combat avklarad!";
+      detail = `5 bottar på <strong>${formatTime(result.survivedSeconds)}</strong>`;
+    } else {
+      title = "Du dog!";
+      detail = `Klarade bara ${result.score} av 5 bottar · överlevde ${formatTime(result.survivedSeconds)}`;
+    }
+    // Score sparas alltid som överlevnadstiden — högt antal kills i kort
+    // tid räknas om till en bra tid (incomplete runs sparas inte i topp 10).
+    value = result.survivedSeconds;
   } else if (result.mode === "time-trial") {
     title = "Race avslutat";
     detail = `Tid: <strong>${formatTime(result.timeSeconds)}</strong>`;
@@ -509,7 +516,11 @@ function renderPostgame(
   const board = getHighScores(result.levelId, result.mode).slice(0, 10);
   const justRecorded = opts.recorded;
 
-  const canRecord = !justRecorded && qualifies(result.levelId, result.mode, value);
+  // Wave runs only qualify for the leaderboard if the player actually
+  // took down all 5 bots — partial runs are shown but not saved.
+  const incompleteWave = result.mode === "wave" && result.score < 5;
+  const canRecord = !justRecorded && !incompleteWave
+    && qualifies(result.levelId, result.mode, value);
   const initialsForm = canRecord ? `
     <form id="initials-form" class="initials">
       <label>Topp 10! Ange initialer:</label>
@@ -548,9 +559,9 @@ function renderPostgame(
 }
 
 function formatScoreValue(mode: GameMode, s: HighScore): string {
-  if (mode === "time-trial" || mode === "race") return formatTime(s.value);
-  // Wave: just the kill count.
-  if (mode === "wave") return String(s.value);
+  if (mode === "time-trial" || mode === "race" || mode === "wave") {
+    return formatTime(s.value);
+  }
   // Duel: "wins–losses" format if both sides are recorded.
   return s.loser !== undefined ? `${s.value}–${s.loser}` : String(s.value);
 }

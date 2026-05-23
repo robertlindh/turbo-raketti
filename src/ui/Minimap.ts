@@ -157,30 +157,43 @@ export class Minimap {
           nextFor.set(idx, list);
         }
       }
-      // Slow pulse — gold gates breathe so the eye is drawn to them.
-      const pulse = 0.85 + 0.15 * Math.sin(performance.now() * 0.005);
+      // Strong pulse on the "next" gate; subtle pulse on the rest, so the
+      // racer's next checkpoint dominates the minimap.
+      const pulse = 1 + 0.45 * Math.sin(performance.now() * 0.008);
       for (let i = 0; i < this.level.checkpoints.length; i++) {
         const cp = this.level.checkpoints[i];
         const cx = this.wx(cp.x);
         const cy = this.wy(cp.y);
-        const r = 5;
         const targetColours = nextFor.get(i);
-        // Base ring — bright gold.
-        ctx.strokeStyle = "rgba(255, 209, 102, 0.95)";
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r * (targetColours ? pulse : 1), 0, Math.PI * 2);
-        ctx.stroke();
-        // Inner dot — fills the "current" gate in the racer's colour;
-        // otherwise leaves a small gold dot.
-        if (targetColours && targetColours.length > 0) {
-          ctx.fillStyle =
-            `#${targetColours[0].toString(16).padStart(6, "0")}`;
+        const isTarget = !!targetColours && targetColours.length > 0;
+        const r = isTarget ? 7 * pulse : 4;
+        // Halo behind the target gate so it really pops.
+        if (isTarget) {
+          const colour = targetColours![0];
+          const hex = `#${colour.toString(16).padStart(6, "0")}`;
+          ctx.fillStyle = hexToRgba(hex, 0.28);
           ctx.beginPath();
-          ctx.arc(cx, cy, r * 0.45 * pulse, 0, Math.PI * 2);
+          ctx.arc(cx, cy, r * 1.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Bold gold ring.
+        ctx.strokeStyle = isTarget
+          ? "rgba(255, 230, 130, 1)"
+          : "rgba(255, 209, 102, 0.85)";
+        ctx.lineWidth = isTarget ? 2 : 1.2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        // Inner fill — racer's colour on target, small gold dot otherwise.
+        if (isTarget) {
+          const colour = targetColours![0];
+          ctx.fillStyle =
+            `#${colour.toString(16).padStart(6, "0")}`;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
           ctx.fill();
         } else {
-          ctx.fillStyle = "rgba(255, 209, 102, 0.5)";
+          ctx.fillStyle = "rgba(255, 209, 102, 0.45)";
           ctx.beginPath();
           ctx.arc(cx, cy, 1.4, 0, Math.PI * 2);
           ctx.fill();
@@ -248,4 +261,13 @@ export class Minimap {
   dispose(): void {
     this.canvas.remove();
   }
+}
+
+/** Quick #rrggbb → "rgba(r,g,b,a)" — small helper for tinting halos. */
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const n = parseInt(h.length === 3
+    ? h.split("").map((c) => c + c).join("")
+    : h, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }

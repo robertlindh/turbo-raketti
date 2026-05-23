@@ -34,6 +34,7 @@ import { Minimap } from "../ui/Minimap";
 
 const KILL_SCORE = 1;
 const DUEL_TARGET_FRAGS = 5;
+const WAVE_TARGET_KILLS = 5;
 
 export type GameMode = "time-trial" | "duel" | "race" | "wave";
 
@@ -367,7 +368,9 @@ export class Game {
     }
 
     this.buildScoreboard();
-    if (this.config.mode === "time-trial" || this.config.mode === "race") {
+    if (this.config.mode === "time-trial"
+        || this.config.mode === "race"
+        || this.config.mode === "wave") {
       this.buildRaceHud();
     }
     new SettingsPanel();
@@ -441,10 +444,20 @@ export class Game {
     document.body.appendChild(root);
     this.raceHud = { root, timer, best };
 
-    // Show the player's existing best so they know the target.
-    const top = getHighScores(this.levelId, "time-trial")[0];
-    if (top) {
-      this.raceHud.best.textContent = `BEST: ${top.initials} ${formatTime(top.value)}`;
+    // Show the player's existing best so they know the target. Wave mode
+    // uses a different sub-line: a live "X / 5 bottar" counter that
+    // updates each kill.
+    if (this.config.mode === "wave") {
+      this.raceHud.best.textContent = `0 / ${WAVE_TARGET_KILLS} bottar`;
+      this.raceHud.best.style.color = "#ff8a8a";
+    } else {
+      const board = this.config.mode === "race"
+        ? getHighScores(this.levelId, "race")
+        : getHighScores(this.levelId, "time-trial");
+      const top = board[0];
+      if (top) {
+        this.raceHud.best.textContent = `BEST: ${top.initials} ${formatTime(top.value)}`;
+      }
     }
   }
 
@@ -485,10 +498,16 @@ export class Game {
   }
 
   private updateScoreboard() {
-    // Live race-timer for time-trial mode. Frozen once the match ends so
-    // the finishing time stays visible during the postgame transition.
+    // Live race-timer. Frozen once the match ends so the finishing time
+    // stays visible during the postgame transition. Wave mode also tracks
+    // the kill counter live in the sub-line so the player feels progress
+    // on every bot taken down.
     if (this.raceHud) {
       this.raceHud.timer.textContent = formatTime(this.matchElapsed);
+      if (this.config.mode === "wave") {
+        this.raceHud.best.textContent =
+          `${this.waveScore} / ${WAVE_TARGET_KILLS} bottar`;
+      }
       // Once finished, flash the timer briefly to feedback completion.
       if (this.matchEnded) {
         this.raceHud.timer.style.color = "#ffffff";
@@ -726,11 +745,12 @@ export class Game {
   private checkWinCondition(): void {
     if (this.matchEnded) return;
     if (this.config.mode === "wave") {
-      // Wave / combat solo — match ends the instant P1 dies. We finish
-      // before the respawn timer expires, so the player gets a single
-      // life per run.
+      // Wave / combat solo — race to take down WAVE_TARGET_KILLS bots as
+      // fast as possible. Match ends when the target kill count is hit
+      // (score = elapsed time, lower = better) OR when P1 dies (score
+      // still recorded so the run isn't lost).
       const p1 = this.players[0];
-      if (p1 && !p1.alive) {
+      if (this.waveScore >= WAVE_TARGET_KILLS || (p1 && !p1.alive)) {
         this.finishMatch({
           mode: "wave",
           levelId: this.levelId,

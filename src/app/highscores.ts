@@ -50,8 +50,10 @@ function getBoard(levelId: string, mode: GameMode): HighScore[] {
 
 /** Sort so the best entries are first. */
 function compare(mode: GameMode): (a: HighScore, b: HighScore) => number {
-  // Race-style modes use time; duel uses frag count.
-  const isTimeBased = mode === "time-trial" || mode === "race";
+  // Race-style modes + wave (complete-run time-attack) use time;
+  // duel uses frag count.
+  const isTimeBased =
+    mode === "time-trial" || mode === "race" || mode === "wave";
   return isTimeBased
     ? (a, b) => a.value - b.value          // lower time = better
     : (a, b) => b.value - a.value;          // higher frags = better
@@ -67,7 +69,8 @@ export function qualifies(levelId: string, mode: GameMode, value: number): boole
   if (board.length < MAX_ENTRIES) return true;
   const sorted = board.slice().sort(compare(mode));
   const worst = sorted[sorted.length - 1];
-  const isTimeBased = mode === "time-trial" || mode === "race";
+  const isTimeBased =
+    mode === "time-trial" || mode === "race" || mode === "wave";
   return isTimeBased ? value < worst.value : value > worst.value;
 }
 

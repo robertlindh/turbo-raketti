@@ -90,11 +90,11 @@ export class Camera {
       const spanY = (maxY - minY) + padding * 2;
       targetZoom = Math.min(vp.width / spanX, vp.height / spanY);
     } else if (this.wideMode) {
-      // Race / time-trial — target a wide view ≈ 1.3× the fit-whole-level
-      // zoom. The player can see most of the course and the next gate,
-      // not just the ship. Clamping below still keeps it sane on huge or
-      // tiny arenas.
-      targetZoom = this.fitZoom() * 1.3;
+      // Race / time-trial — target a moderately wide view at ~2× the
+      // fit-whole-level zoom. The previous 1.3× made the ship feel like
+      // a dot; 2× keeps the next gate visible without losing readable
+      // ship detail.
+      targetZoom = this.fitZoom() * 2.0;
     } else {
       // Single target on screen (e.g. opponent died mid-duel). Pull back
       // 20% further than the duo close-in zoom so the lone pilot sees
