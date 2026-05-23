@@ -4,15 +4,14 @@ import type { PhysicsWorld } from "./PhysicsWorld";
 import { makeBulletTexture } from "../render/sprites";
 import { SETTINGS } from "./Settings";
 
-// Bullets are intentionally pin-prick small — the sprite is a single white
-// pixel, and the trail particles do all the streaking work. Physics radius
-// is a tiny ball so hits register precisely without the bullet visibly
-// "splashing" wider than its mark.
-const BULLET_RADIUS = 0.06;
+// Bullets read as a small dot of plasma — the sprite is a single tinted
+// pixel scaled up to ~2 screen pixels at gameplay zoom, with a short
+// subtle trail behind it for motion clarity.
+const BULLET_RADIUS = 0.10;
 // Display size of the 1×1 sprite, expressed in metres-per-texel. At the
-// game's typical close-in zoom (~22 px/m) this lands a single bullet head
-// at roughly one screen pixel.
-const BULLET_SPRITE_METRES_PER_PX = 0.05;
+// game's typical close-in zoom (~22 px/m) this puts the bullet head at
+// ~2 screen pixels — visible but still very tight.
+const BULLET_SPRITE_METRES_PER_PX = 0.10;
 
 export interface BulletConfig {
   x: number;

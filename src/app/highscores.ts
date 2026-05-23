@@ -8,7 +8,7 @@
 // Top 10 entries per board. A new score only qualifies if either fewer
 // than 10 entries exist or it beats the worst current entry.
 
-export type GameMode = "time-trial" | "duel";
+export type GameMode = "time-trial" | "duel" | "race";
 
 export interface HighScore {
   /** 3-letter initials. */
@@ -50,7 +50,9 @@ function getBoard(levelId: string, mode: GameMode): HighScore[] {
 
 /** Sort so the best entries are first. */
 function compare(mode: GameMode): (a: HighScore, b: HighScore) => number {
-  return mode === "time-trial"
+  // Race-style modes use time; duel uses frag count.
+  const isTimeBased = mode === "time-trial" || mode === "race";
+  return isTimeBased
     ? (a, b) => a.value - b.value          // lower time = better
     : (a, b) => b.value - a.value;          // higher frags = better
 }
@@ -65,7 +67,8 @@ export function qualifies(levelId: string, mode: GameMode, value: number): boole
   if (board.length < MAX_ENTRIES) return true;
   const sorted = board.slice().sort(compare(mode));
   const worst = sorted[sorted.length - 1];
-  return mode === "time-trial" ? value < worst.value : value > worst.value;
+  const isTimeBased = mode === "time-trial" || mode === "race";
+  return isTimeBased ? value < worst.value : value > worst.value;
 }
 
 /** Insert a new score, trim to top 10, return the resulting board.
@@ -79,7 +82,7 @@ export function addScore(
     return { rank: 0, board: getHighScores(levelId, mode) };
   }
   const table = load();
-  table[levelId] = table[levelId] ?? { "time-trial": [], duel: [] };
+  table[levelId] = table[levelId] ?? { "time-trial": [], duel: [], race: [] };
   const board = table[levelId][mode] ?? [];
   const fullEntry: HighScore = {
     initials: entry.initials.toUpperCase().slice(0, 3).padEnd(3, " ").trim() || "AAA",

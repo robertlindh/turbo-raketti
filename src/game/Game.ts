@@ -34,7 +34,7 @@ import { Minimap } from "../ui/Minimap";
 const KILL_SCORE = 1;
 const DUEL_TARGET_FRAGS = 5;
 
-export type GameMode = "time-trial" | "duel";
+export type GameMode = "time-trial" | "duel" | "race";
 
 export interface GameConfig {
   mode: GameMode;
@@ -48,7 +48,8 @@ export interface GameConfig {
 
 export type GameResult =
   | { mode: "time-trial"; levelId: string; timeSeconds: number }
-  | { mode: "duel"; levelId: string; winnerIndex: 0 | 1; winnerScore: number; loserScore: number };
+  | { mode: "duel"; levelId: string; winnerIndex: 0 | 1; winnerScore: number; loserScore: number }
+  | { mode: "race"; levelId: string; winnerIndex: 0 | 1; timeSeconds: number; loserLaps: number };
 
 /** Load a draft level saved by the level editor. Falls back to Metarola if
  *  the storage entry is missing or malformed — keeps the test-play link
@@ -229,8 +230,10 @@ export class Game {
       height: this.app.canvas.clientHeight,
     }));
     this.camera.zoom = 28;
-    // Time-trial wants a pulled-back view so the racer sees the next gate.
-    this.camera.setWideMode(this.config.mode === "time-trial");
+    // Race-style modes pull the camera back so racers see the next gate.
+    this.camera.setWideMode(
+      this.config.mode === "time-trial" || this.config.mode === "race",
+    );
 
     this.physics = new PhysicsWorld({ x: 0, y: SETTINGS.gravity });
 
@@ -280,19 +283,18 @@ export class Game {
     this.worldLayer.addChild(this.wreckage);
 
     // Power-up system shares the world layer so pickups bob in cave space.
-    // Time-trial gets a speed-only pickup pool — frags, shields, mines and
-    // homing missiles are noise when you're racing against the clock.
-    const allowedPowerUps = this.config.mode === "time-trial"
+    // Both race-style modes (time-trial and 2P race) get a speed-only
+    // pickup pool — combat items are noise when you're racing checkpoints.
+    const raceLike = this.config.mode === "time-trial" || this.config.mode === "race";
+    const allowedPowerUps = raceLike
       ? (["speed"] as const).slice()
       : undefined;
     this.powerups = new PowerUpSystem(this.worldLayer, level, allowedPowerUps);
 
-    // Racing — always on in time-trial mode (and only mode where it counts
-    // for win condition). For duel, expose it only if both the level and
-    // the user explicitly request it via settings, preserving older behaviour.
+    // Racing — always on for both race-style modes. For duel, expose it
+    // only if the user explicitly turns it on via settings.
     const numPlayersForRacing = this.config.mode === "time-trial" ? 1 : 2;
-    const wantRacing = this.config.mode === "time-trial"
-      || (SETTINGS.gameMode > 0.5);
+    const wantRacing = raceLike || (SETTINGS.gameMode > 0.5);
     if (wantRacing && level.checkpoints && level.checkpoints.length > 0) {
       this.racing = new RacingSystem(this.worldLayer, level, numPlayersForRacing);
     }
@@ -333,12 +335,12 @@ export class Game {
     this.minimap.setLevel(level);
 
     // 3. Players spawn at the level's authored spawn points. Time-trial
-    //    is single-player so we skip P2 entirely.
+    //    is single-player; duel and race both spawn both ships.
     this.players.push(this.makePlayer({
       index: 0, color: 0x6cc0ff, binding: PLAYER1_KEYS, gamepad: 0,
       spawn: { x: level.spawns[0].x, y: level.spawns[0].y },
     }));
-    if (this.config.mode === "duel") {
+    if (this.config.mode !== "time-trial") {
       this.players.push(this.makePlayer({
         index: 1, color: 0xff7a7a, binding: PLAYER2_KEYS, gamepad: 1,
         spawn: { x: level.spawns[1].x, y: level.spawns[1].y },
@@ -346,7 +348,9 @@ export class Game {
     }
 
     this.buildScoreboard();
-    if (this.config.mode === "time-trial") this.buildRaceHud();
+    if (this.config.mode === "time-trial" || this.config.mode === "race") {
+      this.buildRaceHud();
+    }
     new SettingsPanel();
     this.input.attach();
     this.gamepads.attach();
@@ -707,6 +711,25 @@ export class Game {
           timeSeconds: this.matchElapsed,
         });
       }
+    } else if (this.config.mode === "race") {
+      // Race: first player to N laps wins. Record the winner's time and
+      // the loser's lap count so the postgame can show "P1 won by 1 lap".
+      const target = Math.max(1, Math.round(SETTINGS.raceTargetLaps));
+      if (!this.racing) return;
+      for (let i = 0; i < 2; i++) {
+        if (this.racing.laps[i] >= target) {
+          const winnerIndex = i as 0 | 1;
+          const loserIdx = winnerIndex === 0 ? 1 : 0;
+          this.finishMatch({
+            mode: "race",
+            levelId: this.levelId,
+            winnerIndex,
+            timeSeconds: this.matchElapsed,
+            loserLaps: this.racing.laps[loserIdx] ?? 0,
+          });
+          return;
+        }
+      }
     } else {
       // Duel: first to N frags wins.
       for (const p of this.players) {
@@ -920,14 +943,16 @@ export class Game {
       b.prev = b.snapshot();
       // Optional bullet trail — short streak particle behind each bullet.
       if (SETTINGS.bulletTrail > 0.5) {
+        // Subtle trail — short life and small particles so the trail
+        // hints at the bullet's path without becoming a comet.
         const v = b.body.linvel();
         const p = b.body.translation();
         this.particles.thrustStreak(
           p.x, p.y,
-          v.x * 0.3, v.y * 0.3,
+          v.x * 0.2, v.y * 0.2,
           0xffe0a0,
           0x602010,
-          { life: 0.25, size: 0.7, drag: Math.pow(0.95, 60) },
+          { life: 0.12, size: 0.32, drag: Math.pow(0.95, 60) },
         );
       }
     }

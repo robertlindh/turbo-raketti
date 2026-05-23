@@ -38,7 +38,7 @@ export class App {
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as { mode?: GameMode; levelId?: string };
-        if (parsed.mode === "time-trial" || parsed.mode === "duel") this.selectedMode = parsed.mode;
+        if (parsed.mode === "time-trial" || parsed.mode === "duel" || parsed.mode === "race") this.selectedMode = parsed.mode;
         if (parsed.levelId && LEVELS.some((l) => l.id === parsed.levelId)) {
           this.selectedLevelId = parsed.levelId;
         }
@@ -199,7 +199,7 @@ export class App {
         e.preventDefault();
         const initials = (input?.value ?? "AAA").toUpperCase().slice(0, 3) || "AAA";
         const entry =
-          result.mode === "time-trial"
+          result.mode === "time-trial" || result.mode === "race"
             ? { initials, value: result.timeSeconds }
             : { initials, value: result.winnerScore, loser: result.loserScore };
         addScore(result.levelId, result.mode, entry);
@@ -260,6 +260,10 @@ function renderMenu(app: App): string {
       <strong>Time Trial</strong>
       <span>1 spelare • race mot klockan</span>
     </button>
+    <button class="mode-pick ${mode === "race" ? "active" : ""}" data-mode="race">
+      <strong>Race 2P</strong>
+      <span>2 spelare • first to finish</span>
+    </button>
     <button class="mode-pick ${mode === "duel" ? "active" : ""}" data-mode="duel">
       <strong>Duell</strong>
       <span>2 spelare • first to ${5} frags</span>
@@ -295,7 +299,7 @@ function renderMenu(app: App): string {
         </section>
 
         <section class="scores">
-          <h2>Topp 5 — ${escapeHtml(selectedLevel.level.name)} • ${mode === "time-trial" ? "Time Trial" : "Duell"}</h2>
+          <h2>Topp 5 — ${escapeHtml(selectedLevel.level.name)} • ${modeLabel(mode)}</h2>
           <ol class="scoreboard">${scoresHtml}</ol>
         </section>
       </div>
@@ -325,6 +329,10 @@ function renderPostgame(
   if (result.mode === "time-trial") {
     title = "Race avslutat";
     detail = `Tid: <strong>${formatTime(result.timeSeconds)}</strong>`;
+    value = result.timeSeconds;
+  } else if (result.mode === "race") {
+    title = `Spelare ${result.winnerIndex + 1} vinner racet!`;
+    detail = `Tid: <strong>${formatTime(result.timeSeconds)}</strong> · motståndaren körde ${result.loserLaps} varv`;
     value = result.timeSeconds;
   } else {
     title = `Spelare ${result.winnerIndex + 1} vinner!`;
@@ -374,8 +382,14 @@ function renderPostgame(
 }
 
 function formatScoreValue(mode: GameMode, s: HighScore): string {
-  if (mode === "time-trial") return formatTime(s.value);
+  if (mode === "time-trial" || mode === "race") return formatTime(s.value);
   return s.loser !== undefined ? `${s.value}–${s.loser}` : String(s.value);
+}
+
+function modeLabel(mode: GameMode): string {
+  return mode === "time-trial" ? "Time Trial"
+       : mode === "race"       ? "Race 2P"
+       :                         "Duell";
 }
 
 function escapeHtml(s: string): string {
