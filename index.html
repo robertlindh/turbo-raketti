@@ -163,6 +163,35 @@
         display: none;
       }
 
+      /* In-game loader — same spinning floppy on a solid black screen
+         that covers the canvas while game.init() renders the level
+         backdrop (~1-2s on cold load). Removed once the game starts
+         ticking. */
+      #in-game-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        background: #05070d;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        color: #ffd166;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        letter-spacing: 0.22em;
+        font-size: 13px;
+        text-transform: uppercase;
+      }
+      #in-game-loader .disk-spinner {
+        width: 72px;
+        height: 72px;
+        image-rendering: pixelated;
+        filter: drop-shadow(0 2px 0 rgba(10, 4, 20, 0.7))
+                drop-shadow(0 0 14px rgba(255, 209, 102, 0.45));
+        animation: disk-spin 1.4s linear infinite;
+      }
+
       /* Status row beneath the logo. */
       #loading-screen .status {
         position: relative;

@@ -199,14 +199,51 @@ export class App {
     this.stopMenuGamepadNav();
     this.setScene("game");
     this.screens.innerHTML = "";
+    // Show the disk-spinner over a solid black screen while the level
+    // renders. game.init() can spend ~1-2s building the backdrop on a
+    // cold load; without this overlay the user just sees black.
+    const loader = this.buildInGameLoader();
     this.currentGame = new Game(this.gameMount, {
       mode: this.selectedMode,
       levelId: this.selectedLevelId,
       onGameEnd: (result) => this.showPostgame(result),
     });
-    void this.currentGame.init().then(() => this.currentGame?.start());
+    void this.currentGame.init()
+      .then(() => {
+        loader.remove();
+        this.currentGame?.start();
+      })
+      .catch((err) => {
+        loader.remove();
+        console.error("Game init failed:", err);
+      });
     // Esc returns to the menu mid-match.
     window.addEventListener("keydown", this.onGameKey);
+  }
+
+  /** Build the in-game floppy-disk loader overlay. Returns the element so
+   *  the caller can remove it once the game is ready to display. */
+  private buildInGameLoader(): HTMLElement {
+    const el = document.createElement("div");
+    el.id = "in-game-loader";
+    el.innerHTML = `
+      <svg class="disk-spinner" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+        <g fill="#1a2a48"><rect x="1" y="1" width="14" height="14"/></g>
+        <g fill="#3a5078"><rect x="2" y="2" width="12" height="12"/></g>
+        <g fill="#9aa6b8"><rect x="3" y="2" width="10" height="5"/></g>
+        <g fill="#5a6478"><rect x="6" y="3" width="4" height="3"/></g>
+        <g fill="#e6d488"><rect x="3" y="8" width="10" height="5"/></g>
+        <g fill="#a08820"><rect x="3" y="8" width="10" height="1"/></g>
+        <g fill="#5a4818">
+          <rect x="4" y="10" width="6" height="1"/>
+          <rect x="4" y="12" width="4" height="1"/>
+        </g>
+        <g fill="#ffd166"><rect x="13" y="2" width="1" height="1"/></g>
+      </svg>
+      <div>Laddar bana...</div>
+    `;
+    document.body.appendChild(el);
+    return el;
   }
 
   private onGameKey = (e: KeyboardEvent) => {
