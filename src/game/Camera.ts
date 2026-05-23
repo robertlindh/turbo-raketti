@@ -27,6 +27,16 @@ export class Camera {
   /** Hard ceiling on zoom (close-in). Allows getting really close on small
    *  player separation without flipping into per-pixel territory. */
   private maxZoom = 60;
+  /** When true (race / time-trial), single-target zoom is pulled way back
+   *  so the whole course is visible — the player needs to see the next
+   *  gate, not just their own ship. */
+  private wideMode = false;
+
+  /** Toggle wide-view zoom. Used by time-trial mode to keep the camera
+   *  pulled back instead of glued to the lone ship. */
+  setWideMode(on: boolean): void {
+    this.wideMode = on;
+  }
 
   constructor(
     private stage: Container,
@@ -79,10 +89,16 @@ export class Camera {
       const spanX = (maxX - minX) + padding * 2;
       const spanY = (maxY - minY) + padding * 2;
       targetZoom = Math.min(vp.width / spanX, vp.height / spanY);
+    } else if (this.wideMode) {
+      // Race / time-trial — target a wide view ≈ 1.3× the fit-whole-level
+      // zoom. The player can see most of the course and the next gate,
+      // not just the ship. Clamping below still keeps it sane on huge or
+      // tiny arenas.
+      targetZoom = this.fitZoom() * 1.3;
     } else {
-      // Single target on screen (time-trial, or opponent is dead). Pull back
-      // 20% further than the duo close-in zoom so the lone pilot sees more
-      // of the cave around them and doesn't feel hemmed in.
+      // Single target on screen (e.g. opponent died mid-duel). Pull back
+      // 20% further than the duo close-in zoom so the lone pilot sees
+      // more of the cave around them and doesn't feel hemmed in.
       targetZoom = this.maxZoom * 0.7 * 0.8;
     }
 

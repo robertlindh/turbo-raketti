@@ -229,6 +229,8 @@ export class Game {
       height: this.app.canvas.clientHeight,
     }));
     this.camera.zoom = 28;
+    // Time-trial wants a pulled-back view so the racer sees the next gate.
+    this.camera.setWideMode(this.config.mode === "time-trial");
 
     this.physics = new PhysicsWorld({ x: 0, y: SETTINGS.gravity });
 
