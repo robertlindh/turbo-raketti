@@ -571,6 +571,10 @@ export class Game {
     this.input.detach();
     this.gamepads.detach();
     this.touch.detach();
+    // Silence the thrust loop on every ship — when the ticker stops, the
+    // ship's applyInput() can no longer ramp the gain down, so the loop
+    // would otherwise keep humming through the postgame screen.
+    for (const p of this.players) killThrust(p.cfg.index);
   }
 
   /** Create the centred 3-2-1-GO overlay. The DOM lives outside Pixi so we
