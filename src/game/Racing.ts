@@ -150,12 +150,14 @@ export class RacingSystem {
     return this.nextIndex[playerIndex] ?? 0;
   }
 
-  /** Check every player against their next checkpoint. Returns the player
-   *  index that just completed a lap, or -1 if nobody did. */
+  /** Check every player against their next checkpoint. Returns both the
+   *  list of individual checkpoint hits this tick (for fx + audio) and
+   *  the player index that just completed a lap. */
   checkProgress(
     playerPositions: Array<{ index: number; x: number; y: number; color: number; alive: boolean } | null>,
-  ): number {
+  ): { lapped: number; hits: Array<{ playerIndex: number; cpIndex: number; cpX: number; cpY: number; color: number }> } {
     let lappedPlayer = -1;
+    const hits: Array<{ playerIndex: number; cpIndex: number; cpX: number; cpY: number; color: number }> = [];
     for (const p of playerPositions) {
       if (!p || !p.alive) continue;
       const target = this.nextIndex[p.index];
@@ -164,6 +166,10 @@ export class RacingSystem {
       const dx = p.x - cp.x;
       const dy = p.y - cp.y;
       if (dx * dx + dy * dy < CHECKPOINT_RADIUS * CHECKPOINT_RADIUS) {
+        hits.push({
+          playerIndex: p.index, cpIndex: target,
+          cpX: cp.x, cpY: cp.y, color: p.color,
+        });
         // Hit! Advance. Wrap-around = lap finished.
         const advanced = target + 1;
         if (advanced >= this.checkpoints.length) {
@@ -175,10 +181,12 @@ export class RacingSystem {
         }
       }
     }
-    return lappedPlayer;
+    return { lapped: lappedPlayer, hits };
   }
 
-  /** Per-frame visual update — highlights each player's next checkpoint. */
+  /** Per-frame visual update — highlights each player's next checkpoint
+   *  and hides every other gate so the racer only ever sees the one
+   *  they're aiming for. */
   update(dt: number, players: Array<{ index: number; color: number; alive: boolean }>) {
     for (let i = 0; i < this.views.length; i++) {
       const nextForList: { color: number }[] = [];
@@ -188,7 +196,11 @@ export class RacingSystem {
           nextForList.push({ color: p.color });
         }
       }
-      this.views[i].update(dt, nextForList);
+      // Only render gates that are someone's next target. Lap-completed
+      // gates and gates further ahead in the sequence stay hidden so the
+      // course doesn't read as a forest of rings.
+      this.views[i].view.visible = nextForList.length > 0;
+      if (nextForList.length > 0) this.views[i].update(dt, nextForList);
     }
   }
 

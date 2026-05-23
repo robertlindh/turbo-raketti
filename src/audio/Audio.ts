@@ -108,6 +108,31 @@ export function playWallHit(): void {
   src.stop(now + 0.15);
 }
 
+/** Bright two-note chime — played each time the player flies through a
+ *  race gate. Two triangle waves a fifth apart, fast attack and short
+ *  release so it punches without lingering. */
+export function playGateChime(): void {
+  const c = getCtx();
+  if (!c || !master) return;
+  const now = c.currentTime;
+  const playNote = (freq: number, offset: number, peak: number) => {
+    const osc = c.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq, now + offset);
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0, now + offset);
+    gain.gain.linearRampToValueAtTime(peak, now + offset + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.35);
+    osc.connect(gain);
+    gain.connect(master!);
+    osc.start(now + offset);
+    osc.stop(now + offset + 0.4);
+  };
+  // Root + fifth, slight delay between them for a quick arpeggio.
+  playNote(880, 0, 0.22);    // A5
+  playNote(1320, 0.06, 0.18); // E6
+}
+
 /** Rising chime on respawn. */
 export function playSpawn(): void {
   const c = getCtx();

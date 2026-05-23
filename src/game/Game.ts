@@ -18,7 +18,7 @@ import { SETTINGS, onSettingChange } from "./Settings";
 import { SettingsPanel } from "../ui/SettingsPanel";
 import {
   unlockAudio, startVolumeWatcher,
-  playShoot, playExplosion, playWallHit, playSpawn,
+  playShoot, playExplosion, playWallHit, playSpawn, playGateChime,
   setThrust, killThrust,
 } from "../audio/Audio";
 import { PowerUpSystem } from "./PowerUpSystem";
@@ -1110,10 +1110,28 @@ export class Game {
               y: p.ship.body.translation().y, color: p.cfg.color, alive: true }
           : null,
       );
-      const lapped = this.racing.checkProgress(positions);
-      if (lapped >= 0) {
-        const p = this.players[lapped];
-        // Lap flash on the lapper's position.
+      const progress = this.racing.checkProgress(positions);
+      // Per-gate FX: each passed checkpoint blows up in the racer's
+      // colour with a chime so the player feels the snap of clearing it.
+      for (const hit of progress.hits) {
+        this.particles.explode(hit.cpX, hit.cpY, 24, hit.color, {
+          speedMin: 6, speedMax: 24, lifeMin: 0.25, lifeMax: 0.5,
+          sizeMin: 1.0, sizeMax: 1.8,
+        });
+        this.particles.explode(hit.cpX, hit.cpY, 14, 0xffd166, {
+          speedMin: 4, speedMax: 18, lifeMin: 0.2, lifeMax: 0.4,
+          sizeMin: 0.9, sizeMax: 1.6,
+        });
+        this.glow.burst(hit.cpX, hit.cpY, 2.4, 0xffd166, 0.4);
+        this.glow.burst(hit.cpX, hit.cpY, 1.6, hit.color, 0.3);
+        this.wreckage.spawn(hit.cpX, hit.cpY, 0xffd166, 6);
+        this.cameraShake.amp = Math.max(this.cameraShake.amp, 0.06);
+        playGateChime();
+      }
+      if (progress.lapped >= 0) {
+        const p = this.players[progress.lapped];
+        // Lap flash on the lapper's position — louder fanfare on top of
+        // the gate chime since the lap is a bigger moment.
         if (p.ship) {
           const tp = p.ship.body.translation();
           this.glow.burst(tp.x, tp.y, 2.0, p.cfg.color, 0.35);
