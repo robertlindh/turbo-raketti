@@ -11,6 +11,7 @@ import {
 import { GlowLayer, ParticleSystem } from "../render/fx";
 import { loadLevel } from "../level/LevelLoader";
 import { getLevelById } from "../level/levels";
+import { getHighScores, formatTime } from "../app/highscores";
 import type { Level } from "../level/Level";
 import { SETTINGS, onSettingChange } from "./Settings";
 import { SettingsPanel } from "../ui/SettingsPanel";
@@ -148,6 +149,8 @@ export class Game {
   private accumulator = 0;
   private lastTime = 0;
   private scoreUi: ScoreView[] = [];
+  /** Time-trial HUD — populated only when config.mode === "time-trial". */
+  private raceHud: { root: HTMLElement; timer: HTMLElement; best: HTMLElement } | null = null;
 
   /** Mode + level + game-end callback configured at construction. */
   private config: GameConfig;
@@ -323,6 +326,7 @@ export class Game {
     }
 
     this.buildScoreboard();
+    if (this.config.mode === "time-trial") this.buildRaceHud();
     new SettingsPanel();
     this.input.attach();
     this.gamepads.attach();
@@ -357,6 +361,47 @@ export class Game {
       ammo: new Map<PowerUpType, number>(),
       specialPrev: false,
     };
+  }
+
+  /** Builds the time-trial HUD: a large monospace timer, the lap counter,
+   *  and the best recorded time on the current level (or "—" if none). */
+  private buildRaceHud() {
+    const root = document.createElement("div");
+    root.id = "race-hud";
+    root.style.cssText = `
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(10, 4, 20, 0.78);
+      border: 1px solid rgba(255, 209, 102, 0.4);
+      border-radius: 8px;
+      padding: 12px 28px;
+      color: #ffd166;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      letter-spacing: 0.2em;
+      user-select: none;
+      pointer-events: none;
+      text-align: center;
+      box-shadow: 0 0 24px rgba(255, 209, 102, 0.15);
+    `;
+    const timer = document.createElement("div");
+    timer.textContent = "00:00.00";
+    timer.style.cssText =
+      "font-size: 38px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;";
+    const best = document.createElement("div");
+    best.textContent = "BEST: —";
+    best.style.cssText =
+      "font-size: 11px; opacity: 0.65; margin-top: 6px; color: #aef0ff;";
+    root.append(timer, best);
+    document.body.appendChild(root);
+    this.raceHud = { root, timer, best };
+
+    // Show the player's existing best so they know the target.
+    const top = getHighScores(this.levelId, "time-trial")[0];
+    if (top) {
+      this.raceHud.best.textContent = `BEST: ${top.initials} ${formatTime(top.value)}`;
+    }
   }
 
   private buildScoreboard() {
@@ -396,6 +441,16 @@ export class Game {
   }
 
   private updateScoreboard() {
+    // Live race-timer for time-trial mode. Frozen once the match ends so
+    // the finishing time stays visible during the postgame transition.
+    if (this.raceHud) {
+      this.raceHud.timer.textContent = formatTime(this.matchElapsed);
+      // Once finished, flash the timer briefly to feedback completion.
+      if (this.matchEnded) {
+        this.raceHud.timer.style.color = "#ffffff";
+        this.raceHud.timer.style.textShadow = "0 0 16px rgba(255,209,102,0.9)";
+      }
+    }
     const racing = this.racing;
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
@@ -494,7 +549,7 @@ export class Game {
     // Pixi app removal — destroys the canvas + GL context.
     try { this.app.destroy(true, { children: true, texture: true }); } catch { /* ignore */ }
     // DOM cruft that Game appends to <body>.
-    for (const id of ["scoreboard", "settings-panel"]) {
+    for (const id of ["scoreboard", "settings-panel", "race-hud"]) {
       document.getElementById(id)?.remove();
     }
   }
