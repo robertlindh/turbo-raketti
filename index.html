@@ -109,6 +109,27 @@
         to   { opacity: 1; transform: translateY(0); }
       }
 
+      /* Floppy-disk loading spinner — sits between the logo and the status
+         line, spins continuously while boot is still in flight, and is
+         hidden the moment <body> gains the .ready class. */
+      #loading-screen .disk-spinner {
+        position: relative;
+        width: 72px;
+        height: 72px;
+        image-rendering: pixelated;
+        filter: drop-shadow(0 2px 0 rgba(10, 4, 20, 0.7))
+                drop-shadow(0 0 14px rgba(255, 209, 102, 0.45));
+        animation: disk-spin 1.4s linear infinite;
+        margin-top: 4px;
+      }
+      @keyframes disk-spin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+      }
+      body.ready #loading-screen .disk-spinner {
+        display: none;
+      }
+
       /* Status row beneath the logo. */
       #loading-screen .status {
         position: relative;
@@ -641,6 +662,27 @@
       <div class="rocket-spawner" id="rocket-spawner" aria-hidden="true"></div>
 
       <img class="logo" src="/logo.svg" alt="Turbo Raketti"/>
+
+      <!-- Pixel-art floppy disk that spins while the boot is still in flight.
+           Hidden the moment <body> picks up the .ready class. -->
+      <svg class="disk-spinner" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+        <!-- Outer body (dark blue shell). -->
+        <g fill="#1a2a48"><rect x="1" y="1" width="14" height="14"/></g>
+        <g fill="#3a5078"><rect x="2" y="2" width="12" height="12"/></g>
+        <!-- Metallic top slider. -->
+        <g fill="#9aa6b8"><rect x="3" y="2" width="10" height="5"/></g>
+        <g fill="#5a6478"><rect x="6" y="3" width="4" height="3"/></g>
+        <!-- Label panel. -->
+        <g fill="#e6d488"><rect x="3" y="8" width="10" height="5"/></g>
+        <g fill="#a08820"><rect x="3" y="8" width="10" height="1"/></g>
+        <!-- Two label lines suggesting handwriting. -->
+        <g fill="#5a4818">
+          <rect x="4" y="10" width="6" height="1"/>
+          <rect x="4" y="12" width="4" height="1"/>
+        </g>
+        <!-- Bright corner notch — gives the spin a clear focal point. -->
+        <g fill="#ffd166"><rect x="13" y="2" width="1" height="1"/></g>
+      </svg>
 
       <div class="status">Initializing thrusters<span class="dots"></span></div>
 
