@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Turbo Rakketti — Level Editor</title>
+    <style>
+      :root {
+        --bg: #0a0a0a;
+        --panel: #14161c;
+        --panel-edge: #262a35;
+        --ink: #dde2ec;
+        --ink-mute: #8a93a6;
+        --accent: #64b5ff;
+        --accent-warm: #ffc859;
+        --danger: #ff6b6b;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-size: 13px;
+        overflow: hidden;
+      }
+      #editor-root {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        grid-template-columns: 280px 1fr 280px;
+      }
+      #canvas-mount {
+        position: relative;
+        background: #05070d;
+        overflow: hidden;
+      }
+      #canvas-mount canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .panel {
+        background: var(--panel);
+        border-right: 1px solid var(--panel-edge);
+        padding: 14px 14px 20px;
+        overflow-y: auto;
+      }
+      .panel.right {
+        border-right: none;
+        border-left: 1px solid var(--panel-edge);
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 16px;
+        letter-spacing: 0.5px;
+      }
+      h2 {
+        margin: 18px 0 8px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--ink-mute);
+        font-weight: 600;
+      }
+      .subtitle {
+        color: var(--ink-mute);
+        font-size: 12px;
+        margin: 0 0 4px;
+      }
+      button, .tool-btn {
+        background: #1c1f29;
+        border: 1px solid var(--panel-edge);
+        color: var(--ink);
+        padding: 6px 10px;
+        border-radius: 4px;
+        font: inherit;
+        cursor: pointer;
+        text-align: left;
+      }
+      button:hover, .tool-btn:hover {
+        background: #232734;
+      }
+      .tool-btn.active {
+        background: #2a3a55;
+        border-color: var(--accent);
+        color: #fff;
+      }
+      .tools-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+      .row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin: 6px 0;
+      }
+      .row label {
+        flex: 0 0 auto;
+        color: var(--ink-mute);
+        font-size: 12px;
+      }
+      .row input[type="text"],
+      .row input[type="number"],
+      .row select {
+        flex: 1;
+        background: #1c1f29;
+        border: 1px solid var(--panel-edge);
+        color: var(--ink);
+        padding: 4px 6px;
+        border-radius: 3px;
+        font: inherit;
+      }
+      .row input[type="color"] {
+        width: 38px;
+        height: 26px;
+        border: 1px solid var(--panel-edge);
+        background: transparent;
+        border-radius: 3px;
+        padding: 0;
+      }
+      .hint {
+        color: var(--ink-mute);
+        font-size: 11px;
+        line-height: 1.5;
+        margin: 4px 0 0;
+      }
+      kbd {
+        background: #222;
+        border: 1px solid #444;
+        border-radius: 3px;
+        padding: 0 4px;
+        font-family: monospace;
+        font-size: 11px;
+      }
+      .status {
+        position: absolute;
+        bottom: 10px;
+        left: 12px;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 6px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        color: var(--ink-mute);
+        pointer-events: none;
+        white-space: pre;
+      }
+      .full {
+        width: 100%;
+        margin: 4px 0;
+      }
+      .primary {
+        background: #2a4d7a;
+        border-color: var(--accent);
+      }
+      .primary:hover { background: #335a8d; }
+      .warm {
+        background: #5a4520;
+        border-color: var(--accent-warm);
+        color: #ffeec8;
+      }
+      .warm:hover { background: #6c5527; }
+      textarea {
+        width: 100%;
+        min-height: 140px;
+        background: #0d0f15;
+        border: 1px solid var(--panel-edge);
+        color: var(--ink);
+        font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+        font-size: 11px;
+        padding: 8px;
+        border-radius: 3px;
+        resize: vertical;
+      }
+      hr.sep {
+        border: 0;
+        border-top: 1px solid var(--panel-edge);
+        margin: 14px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="editor-root">
+      <!-- LEFT: tools -->
+      <aside class="panel left" id="panel-left">
+        <h1>Level Editor</h1>
+        <p class="subtitle">TurboRaketti</p>
+
+        <h2>Tools</h2>
+        <div class="tools-grid" id="tools"></div>
+        <p class="hint">
+          <kbd>1</kbd>–<kbd>8</kbd> growl-byter verktyg.
+          <kbd>Esc</kbd> avbryter aktiv ritning.
+          <kbd>Del</kbd> tar bort markerad punkt.<br>
+          Höger-musen panorerar, scroll zoomar.
+        </p>
+
+        <h2>Grid &amp; snap</h2>
+        <div class="row">
+          <label>Steg</label>
+          <select id="snap-step">
+            <option value="0">av</option>
+            <option value="1">1 m</option>
+            <option value="2">2 m</option>
+            <option value="4" selected>4 m</option>
+            <option value="8">8 m</option>
+          </select>
+        </div>
+
+        <h2>Layers</h2>
+        <div id="layer-toggles"></div>
+
+        <hr class="sep" />
+        <button class="full" id="reset-camera">Återställ kamera</button>
+      </aside>
+
+      <!-- CENTER: pixi canvas -->
+      <main id="canvas-mount">
+        <div class="status" id="status">—</div>
+      </main>
+
+      <!-- RIGHT: properties + io -->
+      <aside class="panel right" id="panel-right">
+        <h2>Bana</h2>
+        <div class="row">
+          <label>Namn</label>
+          <input type="text" id="level-name" />
+        </div>
+        <div class="row">
+          <label>ID</label>
+          <input type="text" id="level-id" />
+        </div>
+
+        <h2>Tema</h2>
+        <div class="row">
+          <label>Preset</label>
+          <select id="theme-preset"></select>
+        </div>
+        <div id="theme-colors"></div>
+
+        <h2>Bounds</h2>
+        <div class="row">
+          <button class="full" id="fit-bounds">Auto-fit till polygoner</button>
+        </div>
+        <div id="bounds-fields"></div>
+
+        <h2>Import / Export</h2>
+        <div class="row">
+          <select id="import-preset">
+            <option value="">Ladda mall...</option>
+          </select>
+          <button id="load-preset">Öppna</button>
+        </div>
+        <button class="full primary" id="export-ts">Exportera TS</button>
+        <textarea id="export-output" readonly placeholder="Genererad TypeScript-kod dyker upp här..."></textarea>
+        <button class="full" id="copy-export">Kopiera till urklipp</button>
+
+        <h2>Testkörning</h2>
+        <button class="full warm" id="play-test">Spela banan</button>
+        <p class="hint">
+          Sparar banan i localStorage som <code>__draft</code> och öppnar
+          spelet i ny flik.
+        </p>
+      </aside>
+    </div>
+    <script type="module" src="/src/editor/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Turbo Rakketti</title>
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #0a0a0a;
+        color: #ddd;
+        font-family: system-ui, sans-serif;
+        overflow: hidden;
+      }
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+      #hud {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        font-size: 13px;
+        line-height: 1.5;
+        background: rgba(0, 0, 0, 0.55);
+        padding: 10px 14px;
+        border-radius: 6px;
+        pointer-events: none;
+        user-select: none;
+      }
+      kbd {
+        background: #222;
+        border: 1px solid #444;
+        border-radius: 3px;
+        padding: 1px 5px;
+        font-family: monospace;
+      }
+
+      /* ------------------------------------------------------------------
+         Loading screen — matches the in-game palette from Background.ts:
+         purple-to-black vertical gradient, deterministic stars, a pixel
+         rocket trailing flame across the screen, CRT scanlines on top.
+         Fades out once the body gains the .loaded class (set by main.ts).
+         ------------------------------------------------------------------ */
+      #loading-screen {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        /* Same gradient as drawBackdrop() in Background.ts. */
+        background:
+          radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(0,0,0,0.55) 100%),
+          radial-gradient(circle at 21% 21%, rgba(120,60,140,0.18), transparent 45%),
+          radial-gradient(circle at 68% 17%, rgba(80,100,180,0.18), transparent 45%),
+          radial-gradient(circle at 47% 42%, rgba(200,90,140,0.12), transparent 40%),
+          radial-gradient(circle at 85% 65%, rgba(120,80,180,0.14), transparent 45%),
+          linear-gradient(180deg, #2a1840 0%, #1a0e26 55%, #0a0414 100%);
+        opacity: 1;
+        transition: opacity .55s ease-out;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        color: #dec4ff;
+        overflow: hidden;
+      }
+      body.loaded #loading-screen {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* Star field — inline SVG, fills the whole overlay, twinkles softly. */
+      #loading-screen .stars {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0.9;
+        animation: twinkle 4.2s ease-in-out infinite;
+      }
+      @keyframes twinkle {
+        0%, 100% { opacity: 0.55; }
+        50%      { opacity: 1; }
+      }
+
+      /* The rocket flies across the screen on a slow loop. */
+      #loading-screen .rocket {
+        position: absolute;
+        bottom: 18%;
+        left: -80px;
+        width: 64px;
+        height: auto;
+        transform: rotate(70deg);
+        filter: drop-shadow(0 0 8px rgba(255,180,90,0.55));
+        animation: fly 6.5s linear infinite;
+      }
+      @keyframes fly {
+        0%   { transform: translate(0, 0)        rotate(70deg); }
+        50%  { transform: translate(50vw, -30vh) rotate(80deg); }
+        100% { transform: translate(110vw, -60vh) rotate(75deg); }
+      }
+
+      /* The logo SVG, prominent in the centre. */
+      #loading-screen .logo {
+        position: relative;
+        width: min(560px, 78vw);
+        height: auto;
+        image-rendering: pixelated;
+        filter: drop-shadow(0 4px 0 rgba(10,4,20,0.7))
+                drop-shadow(0 0 28px rgba(120,60,180,0.45));
+        animation: logo-rise 1.1s cubic-bezier(.2,.8,.25,1) both;
+      }
+      @keyframes logo-rise {
+        from { opacity: 0; transform: translateY(18px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      /* Status row beneath the logo. */
+      #loading-screen .status {
+        position: relative;
+        font-size: 13px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #aef0ff;
+        text-shadow: 0 0 8px rgba(174,240,255,0.45);
+      }
+      /* Once boot is done, the body gains .ready and we swap the indeterminate
+         loading state for a blinking "press to continue" prompt. */
+      #loading-screen .press-any {
+        position: relative;
+        font-size: 14px;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: #ffd166;
+        text-shadow: 0 0 10px rgba(255, 209, 102, 0.5),
+                     0 0 22px rgba(255, 209, 102, 0.25);
+        margin-top: 4px;
+        display: none;
+        animation: pulse 1.1s ease-in-out infinite;
+      }
+      body.ready #loading-screen .press-any { display: block; }
+      body.ready #loading-screen .status,
+      body.ready #loading-screen .progress { display: none; }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50%      { opacity: 0.35; }
+      }
+      #loading-screen .status .dots::after {
+        content: "";
+        animation: dots 1.4s steps(4, end) infinite;
+      }
+      @keyframes dots {
+        0%   { content: "";    }
+        25%  { content: ".";   }
+        50%  { content: "..";  }
+        75%  { content: "..."; }
+        100% { content: "";    }
+      }
+
+      /* Progress bar — pixel-y, glowing, indeterminate sweep. */
+      #loading-screen .progress {
+        position: relative;
+        width: min(420px, 70vw);
+        height: 10px;
+        background: rgba(10, 4, 20, 0.7);
+        border: 2px solid #1f5078;
+        box-shadow: 0 0 0 1px #0a0414, 0 0 18px rgba(80,160,210,0.25);
+        overflow: hidden;
+      }
+      #loading-screen .progress::before {
+        content: "";
+        position: absolute;
+        top: 0; bottom: 0;
+        width: 35%;
+        background: linear-gradient(90deg,
+          transparent 0%,
+          #4fa0d0 20%,
+          #aef0ff 50%,
+          #dec4ff 70%,
+          #ffd166 90%,
+          transparent 100%);
+        box-shadow: 0 0 12px rgba(174,240,255,0.7);
+        animation: sweep 1.6s ease-in-out infinite;
+      }
+      @keyframes sweep {
+        0%   { left: -40%; }
+        100% { left: 105%; }
+      }
+
+      /* Player hint bar at the very bottom. */
+      #loading-screen .hint {
+        position: absolute;
+        bottom: 38px;
+        left: 0; right: 0;
+        text-align: center;
+        font-size: 11px;
+        letter-spacing: 0.3em;
+        color: rgba(222, 196, 255, 0.55);
+      }
+
+      /* Author credit, smaller and dimmer, hugging the bottom edge. */
+      #loading-screen .credit {
+        position: absolute;
+        bottom: 14px;
+        left: 0; right: 0;
+        text-align: center;
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(174, 240, 255, 0.45);
+      }
+      #loading-screen .credit b {
+        color: #ffd166;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+      }
+
+      /* CRT scanlines + slight vignette, identical to ui/CrtOverlay.ts. */
+      #loading-screen .scanlines {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          repeating-linear-gradient(
+            0deg,
+            rgba(0, 0, 0, 0.22) 0px,
+            rgba(0, 0, 0, 0.22) 1px,
+            transparent 1px,
+            transparent 3px
+          );
+        mix-blend-mode: multiply;
+      }
+
+      /* ------------------------------------------------------------------
+         Overlay screens (#screens) — main menu and postgame. Sits above
+         the Pixi canvas with a translucent backdrop. The data-scene attr
+         on #screens drives visibility — "game" hides it entirely.
+         ------------------------------------------------------------------ */
+      #screens {
+        position: fixed;
+        inset: 0;
+        z-index: 500;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        color: #dec4ff;
+        background:
+          radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(0,0,0,0.55) 100%),
+          radial-gradient(circle at 21% 21%, rgba(120,60,140,0.18), transparent 45%),
+          radial-gradient(circle at 68% 17%, rgba(80,100,180,0.18), transparent 45%),
+          linear-gradient(180deg, #2a1840 0%, #1a0e26 55%, #0a0414 100%);
+        overflow-y: auto;
+      }
+      #screens[data-scene="game"],
+      #screens[data-scene="loading"] {
+        display: none;
+      }
+      #screens .screen {
+        max-width: 920px;
+        width: 100%;
+        margin: auto;
+      }
+
+      /* HUD is in-game only — hide on menu/postgame screens. */
+      #screens[data-scene="menu"] ~ #hud,
+      #screens[data-scene="postgame"] ~ #hud,
+      #screens[data-scene="loading"] ~ #hud {
+        display: none;
+      }
+
+      /* --- Menu --- */
+      .menu-header h1 {
+        margin: 0;
+        font-size: 38px;
+        letter-spacing: 4px;
+        color: #ffd166;
+        text-shadow: 0 4px 0 #0a0414, 0 0 18px rgba(255,180,90,0.4);
+      }
+      .menu-header .tagline {
+        color: #aef0ff;
+        letter-spacing: 0.3em;
+        font-size: 12px;
+        margin: 4px 0 28px;
+        text-transform: uppercase;
+        opacity: 0.7;
+      }
+      #screens h2 {
+        font-size: 11px;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: #aef0ff;
+        margin: 18px 0 10px;
+        opacity: 0.8;
+      }
+      .mode-picks, .level-picks {
+        display: grid;
+        gap: 10px;
+      }
+      .mode-picks {
+        grid-template-columns: 1fr 1fr;
+      }
+      .level-picks {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      }
+      .mode-pick, .level-pick {
+        background: rgba(20, 10, 32, 0.7);
+        border: 1px solid rgba(120, 80, 180, 0.35);
+        color: #dec4ff;
+        padding: 14px 16px;
+        text-align: left;
+        border-radius: 6px;
+        cursor: pointer;
+        font: inherit;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        transition: background .12s, border-color .12s, transform .08s;
+      }
+      .mode-pick:hover, .level-pick:hover {
+        background: rgba(40, 24, 64, 0.85);
+        border-color: rgba(174, 240, 255, 0.5);
+      }
+      .mode-pick.active, .level-pick.active {
+        background: linear-gradient(135deg, rgba(80, 40, 130, 0.85), rgba(40, 80, 130, 0.85));
+        border-color: #aef0ff;
+        box-shadow: 0 0 0 1px #aef0ff inset, 0 0 18px rgba(174,240,255,0.25);
+        color: #ffffff;
+      }
+      .mode-pick strong { font-size: 16px; letter-spacing: 0.12em; }
+      .mode-pick span { font-size: 11px; opacity: 0.7; letter-spacing: 0.1em; }
+      .level-pick-name { font-weight: 700; letter-spacing: 0.12em; font-size: 13px; }
+      .level-pick-sub { font-size: 10px; opacity: 0.65; letter-spacing: 0.1em; }
+
+      .scoreboard {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        background: rgba(10, 4, 20, 0.55);
+        border: 1px solid rgba(120, 80, 180, 0.25);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .scoreboard li {
+        display: grid;
+        grid-template-columns: 36px 1fr auto;
+        gap: 12px;
+        padding: 7px 14px;
+        font-size: 13px;
+        align-items: center;
+        border-bottom: 1px solid rgba(80, 50, 120, 0.18);
+      }
+      .scoreboard li:last-child { border-bottom: none; }
+      .scoreboard li.empty {
+        text-align: center;
+        display: block;
+        color: rgba(222, 196, 255, 0.4);
+        letter-spacing: 0.2em;
+        font-size: 11px;
+        padding: 20px;
+      }
+      .scoreboard li.highlight {
+        background: rgba(255, 209, 102, 0.18);
+        color: #ffd166;
+      }
+      .scoreboard .rank {
+        color: #aef0ff;
+        font-weight: 700;
+        text-align: right;
+        opacity: 0.7;
+      }
+      .scoreboard .initials {
+        font-weight: 700;
+        letter-spacing: 0.3em;
+      }
+      .scoreboard .value {
+        font-variant-numeric: tabular-nums;
+        opacity: 0.85;
+      }
+
+      .menu-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 28px;
+      }
+      #screens button, #screens .link-btn {
+        font: inherit;
+        background: rgba(20, 10, 32, 0.7);
+        border: 1px solid rgba(120, 80, 180, 0.45);
+        color: #dec4ff;
+        padding: 10px 22px;
+        border-radius: 5px;
+        cursor: pointer;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        font-size: 12px;
+        text-decoration: none;
+        display: inline-block;
+      }
+      #screens .link-btn {
+        opacity: 0.7;
+      }
+      #screens .link-btn:hover { opacity: 1; }
+      #screens button.primary {
+        background: linear-gradient(135deg, #ffd166, #ff8030);
+        border-color: #ffd166;
+        color: #0a0414;
+        font-weight: 700;
+        padding: 12px 32px;
+        font-size: 13px;
+      }
+      #screens button.primary:hover {
+        filter: brightness(1.1);
+      }
+
+      /* --- Postgame --- */
+      .postgame-screen h1 {
+        font-size: 32px;
+        letter-spacing: 0.16em;
+        color: #ffd166;
+        margin: 8px 0 8px;
+        text-shadow: 0 4px 0 #0a0414, 0 0 24px rgba(255,180,90,0.4);
+      }
+      .postgame-screen .result {
+        font-size: 16px;
+        margin: 0 0 18px;
+        color: #aef0ff;
+      }
+      .postgame-screen .result strong {
+        color: #ffffff;
+        font-variant-numeric: tabular-nums;
+      }
+      .postgame-screen .result small {
+        opacity: 0.6;
+        margin-left: 6px;
+      }
+      .initials {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 12px 0 24px;
+        padding: 14px 18px;
+        background: rgba(255, 209, 102, 0.12);
+        border: 1px solid rgba(255, 209, 102, 0.45);
+        border-radius: 6px;
+      }
+      .initials label {
+        color: #ffd166;
+        font-size: 13px;
+        letter-spacing: 0.15em;
+      }
+      .initials input {
+        flex: 0 1 120px;
+        background: rgba(10, 4, 20, 0.7);
+        border: 1px solid rgba(174, 240, 255, 0.55);
+        color: #ffffff;
+        font: inherit;
+        font-size: 22px;
+        text-align: center;
+        letter-spacing: 0.4em;
+        padding: 6px 8px;
+        border-radius: 4px;
+        text-transform: uppercase;
+      }
+      .postgame-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        margin-top: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <!-- Overlay screens (menu, postgame). main.ts swaps innerHTML and sets
+         data-scene to control visibility. -->
+    <div id="screens" data-scene="loading"></div>
+    <div id="hud">
+      <strong>TurboRakketti</strong> &mdash; prototype<br />
+      <b>P1:</b> <kbd>&uarr;</kbd> thrust &nbsp; <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> rotate &nbsp; <kbd>Space</kbd> fire<br />
+      <b>P2:</b> <kbd>W</kbd> thrust &nbsp; <kbd>A</kbd>/<kbd>D</kbd> rotate &nbsp; <kbd>S</kbd> fire
+    </div>
+
+    <!-- =======================================================================
+         Loading screen. Stays visible until main.ts adds .loaded to <body>.
+         ======================================================================= -->
+    <div id="loading-screen">
+      <!-- Deterministic star field, ~50 stars positioned across a 100x100 viewBox. -->
+      <svg class="stars" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <g fill="#ffffff">
+          <circle cx="6"  cy="11" r="0.18"/><circle cx="13" cy="84" r="0.22"/>
+          <circle cx="17" cy="27" r="0.16"/><circle cx="22" cy="58" r="0.20"/>
+          <circle cx="26" cy="12" r="0.14"/><circle cx="29" cy="73" r="0.30"/>
+          <circle cx="34" cy="42" r="0.18"/><circle cx="38" cy="22" r="0.16"/>
+          <circle cx="41" cy="88" r="0.22"/><circle cx="45" cy="51" r="0.14"/>
+          <circle cx="49" cy="9"  r="0.28"/><circle cx="52" cy="68" r="0.16"/>
+          <circle cx="56" cy="33" r="0.20"/><circle cx="60" cy="79" r="0.18"/>
+          <circle cx="63" cy="18" r="0.14"/><circle cx="67" cy="46" r="0.24"/>
+          <circle cx="71" cy="61" r="0.18"/><circle cx="74" cy="29" r="0.16"/>
+          <circle cx="78" cy="83" r="0.22"/><circle cx="82" cy="14" r="0.18"/>
+          <circle cx="86" cy="54" r="0.16"/><circle cx="91" cy="38" r="0.20"/>
+          <circle cx="94" cy="71" r="0.18"/><circle cx="97" cy="23" r="0.14"/>
+        </g>
+        <!-- Larger bluish stars with cross sparkle. -->
+        <g fill="#aef0ff">
+          <circle cx="10" cy="46" r="0.35"/><circle cx="44" cy="36" r="0.32"/>
+          <circle cx="70" cy="76" r="0.34"/><circle cx="88" cy="9"  r="0.30"/>
+        </g>
+        <g stroke="#aef0ff" stroke-width="0.06" stroke-linecap="round" opacity="0.6">
+          <line x1="9"  y1="46" x2="11" y2="46"/><line x1="10" y1="45" x2="10" y2="47"/>
+          <line x1="43" y1="36" x2="45" y2="36"/><line x1="44" y1="35" x2="44" y2="37"/>
+          <line x1="69" y1="76" x2="71" y2="76"/><line x1="70" y1="75" x2="70" y2="77"/>
+          <line x1="87" y1="9"  x2="89" y2="9" /><line x1="88" y1="8"  x2="88" y2="10"/>
+        </g>
+      </svg>
+
+      <!-- Animated rocket, inline so no second request. Same sprite cells as
+           src/render/sprites.ts SHIP_GRID, plus a 2-row exhaust flame. -->
+      <svg class="rocket" viewBox="0 0 13 17" shape-rendering="crispEdges" aria-hidden="true">
+        <!-- Outline (K) -->
+        <g fill="#0a0414">
+          <rect x="6" y="0" width="1" height="1"/>
+          <rect x="5" y="1" width="1" height="2"/><rect x="7" y="1" width="1" height="2"/>
+          <rect x="4" y="3" width="1" height="2"/><rect x="8" y="3" width="1" height="2"/>
+          <rect x="3" y="5" width="1" height="2"/><rect x="9" y="5" width="1" height="2"/>
+          <rect x="2" y="7" width="1" height="2"/><rect x="10" y="7" width="1" height="2"/>
+          <rect x="1" y="9" width="1" height="2"/><rect x="11" y="9" width="1" height="2"/>
+          <rect x="0" y="11" width="1" height="3"/><rect x="12" y="11" width="1" height="3"/>
+          <rect x="1" y="13" width="1" height="1"/><rect x="11" y="13" width="1" height="1"/>
+        </g>
+        <!-- Hull mid (H) -->
+        <g fill="#4fa0d0">
+          <rect x="6" y="1" width="1" height="3"/>
+          <rect x="5" y="3" width="1" height="2"/><rect x="7" y="3" width="1" height="2"/>
+          <rect x="4" y="5" width="5" height="2"/>
+          <rect x="3" y="7" width="3" height="2"/><rect x="7" y="7" width="3" height="2"/>
+          <rect x="2" y="9" width="9" height="2"/>
+          <rect x="2" y="11" width="9" height="1"/>
+        </g>
+        <!-- Hull deep shadow (h) -->
+        <rect x="6" y="7" width="1" height="2" fill="#1f5078"/>
+        <!-- Canopy (C) -->
+        <rect x="6" y="4" width="1" height="1" fill="#aef0ff"/>
+        <!-- Wing tips (M) -->
+        <g fill="#7ec0e8">
+          <rect x="1" y="11" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/>
+          <rect x="1" y="12" width="2" height="1"/><rect x="10" y="12" width="2" height="1"/>
+        </g>
+        <!-- Exhaust flame -->
+        <g fill="#ff8030">
+          <rect x="3"  y="14" width="1" height="1"/><rect x="9" y="14" width="1" height="1"/>
+          <rect x="4"  y="15" width="1" height="1"/><rect x="8" y="15" width="1" height="1"/>
+        </g>
+        <g fill="#ffd166">
+          <rect x="4" y="14" width="5" height="1"/>
+          <rect x="5" y="15" width="3" height="1"/>
+          <rect x="6" y="16" width="1" height="1"/>
+        </g>
+        <rect x="6" y="14" width="1" height="2" fill="#ffffff"/>
+      </svg>
+
+      <img class="logo" src="/logo.svg" alt="Turbo Rakketti"/>
+
+      <div class="status">Initializing thrusters<span class="dots"></span></div>
+
+      <div class="progress" role="progressbar" aria-label="Loading"></div>
+
+      <div class="press-any">Tryck en tangent eller klicka</div>
+
+      <div class="hint">P1 &nbsp; ARROWS + SPACE &nbsp;&middot;&nbsp; P2 &nbsp; W A S D</div>
+
+      <div class="credit">A game by <b>R&Aring;BERT</b> &amp; <b>JACK</b></div>
+
+      <div class="scanlines"></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TURBO RAKKETTI — wordmark
+  Pixel-perfect 5x7 bitmap glyphs rendered as SVG <rect>s, with palette pulled
+  straight from src/render/sprites.ts and src/render/Background.ts so the logo
+  reads as the same art style as the game.
+
+      "TURBO"     -> nose palette  (#ffe199 -> #ffd166 -> #ff8030)
+      "RAKKETTI"  -> hull palette  (#dec4ff -> #aef0ff -> #4fa0d0 -> #1f5078)
+      shadow      -> outline       (#0a0414, the SHIP "K" colour)
+
+  ViewBox is 360x84 logical units. Each glyph cell is 1 unit pre-scale; the
+  TURBO line uses scale 3 (each glyph is 15x21 units), RAKKETTI uses scale 6
+  (each glyph is 30x42 units). shape-rendering="crispEdges" keeps the pixels
+  sharp at any browser size.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 84" shape-rendering="crispEdges" role="img" aria-label="Turbo Rakketti">
+  <defs>
+    <!-- Hull gradient: rim-light lavender at top, fading through canopy cyan and hull blue down to hull-deep shadow. -->
+    <linearGradient id="hull" gradientUnits="userSpaceOnUse" x1="0" y1="32" x2="0" y2="74">
+      <stop offset="0" stop-color="#dec4ff"/>
+      <stop offset=".22" stop-color="#aef0ff"/>
+      <stop offset=".55" stop-color="#7ec0e8"/>
+      <stop offset=".8" stop-color="#4fa0d0"/>
+      <stop offset="1" stop-color="#1f5078"/>
+    </linearGradient>
+
+    <!-- Nose gradient: matches the rocket nose/flame palette. -->
+    <linearGradient id="nose" gradientUnits="userSpaceOnUse" x1="0" y1="8" x2="0" y2="29">
+      <stop offset="0" stop-color="#ffe199"/>
+      <stop offset=".5" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ff8030"/>
+    </linearGradient>
+
+    <!-- 5x7 letter glyphs (1 unit = 1 pixel). -->
+    <g id="L-T"><rect x="0" y="0" width="5" height="1"/><rect x="2" y="1" width="1" height="6"/></g>
+    <g id="L-U"><rect x="0" y="0" width="1" height="6"/><rect x="4" y="0" width="1" height="6"/><rect x="1" y="6" width="3" height="1"/></g>
+    <g id="L-R"><rect x="0" y="0" width="1" height="7"/><rect x="1" y="0" width="3" height="1"/><rect x="4" y="1" width="1" height="2"/><rect x="1" y="3" width="3" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="5" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/></g>
+    <g id="L-B"><rect x="0" y="0" width="1" height="7"/><rect x="1" y="0" width="3" height="1"/><rect x="4" y="1" width="1" height="2"/><rect x="1" y="3" width="3" height="1"/><rect x="4" y="4" width="1" height="2"/><rect x="1" y="6" width="3" height="1"/></g>
+    <g id="L-O"><rect x="1" y="0" width="3" height="1"/><rect x="0" y="1" width="1" height="5"/><rect x="4" y="1" width="1" height="5"/><rect x="1" y="6" width="3" height="1"/></g>
+    <g id="L-A"><rect x="1" y="0" width="3" height="1"/><rect x="0" y="1" width="1" height="6"/><rect x="4" y="1" width="1" height="6"/><rect x="1" y="3" width="3" height="1"/></g>
+    <g id="L-K"><rect x="0" y="0" width="1" height="7"/><rect x="4" y="0" width="1" height="1"/><rect x="3" y="1" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="1" y="3" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="5" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/></g>
+    <g id="L-E"><rect x="0" y="0" width="5" height="1"/><rect x="0" y="1" width="1" height="6"/><rect x="1" y="3" width="3" height="1"/><rect x="1" y="6" width="4" height="1"/></g>
+    <g id="L-I"><rect x="0" y="0" width="5" height="1"/><rect x="2" y="1" width="1" height="5"/><rect x="0" y="6" width="5" height="1"/></g>
+  </defs>
+
+  <!-- Drop shadow: outline-dark, offset down-right 3 units to read against any backdrop. -->
+  <g fill="#0a0414" opacity="0.85">
+    <g transform="translate(140,11) scale(3)">
+      <use href="#L-T"/><use href="#L-U" x="6"/><use href="#L-R" x="12"/><use href="#L-B" x="18"/><use href="#L-O" x="24"/>
+    </g>
+    <g transform="translate(42,35) scale(6)">
+      <use href="#L-R"/><use href="#L-A" x="6"/><use href="#L-K" x="12"/><use href="#L-K" x="18"/><use href="#L-E" x="24"/><use href="#L-T" x="30"/><use href="#L-T" x="36"/><use href="#L-I" x="42"/>
+    </g>
+  </g>
+
+  <!-- "TURBO" -->
+  <g fill="url(#nose)">
+    <g transform="translate(137,8) scale(3)">
+      <use href="#L-T"/><use href="#L-U" x="6"/><use href="#L-R" x="12"/><use href="#L-B" x="18"/><use href="#L-O" x="24"/>
+    </g>
+  </g>
+
+  <!-- "RAKKETTI" -->
+  <g fill="url(#hull)">
+    <g transform="translate(39,32) scale(6)">
+      <use href="#L-R"/><use href="#L-A" x="6"/><use href="#L-K" x="12"/><use href="#L-K" x="18"/><use href="#L-E" x="24"/><use href="#L-T" x="30"/><use href="#L-T" x="36"/><use href="#L-I" x="42"/>
+    </g>
+  </g>
+</svg>

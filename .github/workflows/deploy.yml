@@ -1,0 +1,55 @@
+# Auto-deploy to GitHub Pages on every push to `main`.
+#
+# Builds the Vite project (which writes to `dist/`) and uploads it as a
+# Pages artifact. Pages is configured via Settings → Pages → Source =
+# "GitHub Actions" (you'll do this once in the GitHub UI).
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Lets you run a deploy from the Actions tab manually too.
+  workflow_dispatch:
+
+# Concurrency: cancel any in-flight deploy when a new commit lands so we
+# never end up serving an older build after a newer push.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

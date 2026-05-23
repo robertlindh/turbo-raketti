@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TurboRaketti — pixel-art direction comparison</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 24px;
+        background: #0a0a0d;
+        color: #ddd;
+        font-family: system-ui, -apple-system, sans-serif;
+        min-height: 100vh;
+      }
+      h1 { font-size: 18px; margin: 0 0 4px 0; font-weight: 600; letter-spacing: 0.2px; }
+      .lede { color: #999; font-size: 13px; margin: 0 0 24px 0; max-width: 720px; line-height: 1.5; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+        gap: 20px;
+      }
+      article {
+        background: #15151a;
+        border: 1px solid #25252e;
+        border-radius: 10px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      article h2 { margin: 0; font-size: 15px; font-weight: 600; }
+      article h2 .num { color: #6cc0ff; margin-right: 8px; }
+      article p { margin: 0; font-size: 13px; line-height: 1.5; color: #aaa; }
+      .canvas-wrap {
+        background: #000;
+        border-radius: 6px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      canvas {
+        display: block;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        width: 100%;
+        height: auto;
+      }
+      ul { margin: 0; padding: 0 0 0 18px; color: #aaa; font-size: 12.5px; line-height: 1.55; }
+      ul li::marker { color: #555; }
+      .tag {
+        display: inline-block;
+        font-size: 11px;
+        padding: 2px 8px;
+        background: #202028;
+        border-radius: 100px;
+        color: #999;
+        margin-right: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>TurboRaketti — pixel-art direction comparison</h1>
+    <p class="lede">
+      Three takes on pixel-art for the remake. Each panel shows a ship, cave wall + floor, a bullet,
+      and a thrust flame at the same in-game scene. Pick the one that feels right and I'll port the
+      style into the live game.
+    </p>
+
+    <div class="grid">
+      <article>
+        <h2><span class="num">01</span>Amiga-faithful 16-color</h2>
+        <div>
+          <span class="tag">128×96 logical</span>
+          <span class="tag">16 colours</span>
+          <span class="tag">no AA</span>
+        </div>
+        <div class="canvas-wrap"><canvas id="c1" width="128" height="96"></canvas></div>
+        <p>
+          Hard pixels, saturated palette, solid-fill shading, dithered transitions. Speaks the same
+          visual language as the 1992 original — but with modern composition, lighting, and animation.
+        </p>
+        <ul>
+          <li>Recognisable as a tribute to the original</li>
+          <li>Cheapest to produce — small sprites, few colours</li>
+          <li>Will look chunky on 4K monitors (which is the charm)</li>
+        </ul>
+      </article>
+
+      <article>
+        <h2><span class="num">02</span>Modern indie pixel</h2>
+        <div>
+          <span class="tag">128×96 logical</span>
+          <span class="tag">~32 colours</span>
+          <span class="tag">subtle dither</span>
+        </div>
+        <div class="canvas-wrap"><canvas id="c2" width="128" height="96"></canvas></div>
+        <p>
+          Same pixel resolution but a richer palette with smooth in-grid shading and dithering.
+          The look of Celeste, Hotline Miami, Hyper Light Drifter. Most flexibility — readable at
+          any zoom, gameplay-first, still feels handmade.
+        </p>
+        <ul>
+          <li>Best balance of style and clarity</li>
+          <li>Industry-standard for 2D indie in 2026</li>
+          <li>Easiest to extend with sprite-sheet animation</li>
+        </ul>
+      </article>
+
+      <article>
+        <h2><span class="num">03</span>HD pixel art + glow</h2>
+        <div>
+          <span class="tag">192×144 logical</span>
+          <span class="tag">unlimited colours</span>
+          <span class="tag">bloom</span>
+        </div>
+        <div class="canvas-wrap"><canvas id="c3" width="192" height="144"></canvas></div>
+        <p>
+          Higher resolution sprites with full shading, soft lighting and additive glow on engines
+          and bullets — Dead Cells / Sea of Stars territory. Pixel art aesthetic but cinematic.
+          Most production effort per asset.
+        </p>
+        <ul>
+          <li>Most striking screenshots</li>
+          <li>Lighting and particles do a lot of work</li>
+          <li>Requires more time per sprite — slowest to iterate</li>
+        </ul>
+      </article>
+    </div>
+
+    <script type="module" src="/graphics-preview.js"></script>
+  </body>
+</html>
