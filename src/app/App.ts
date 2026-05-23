@@ -12,7 +12,10 @@ import { LEVELS } from "../level/levels";
 import {
   getHighScores, qualifies, addScore, formatTime, type HighScore,
 } from "./highscores";
-import { unlockAudio, startMenuMusic, stopMenuMusic, startVolumeWatcher } from "../audio/Audio";
+import {
+  unlockAudio, startMenuMusic, stopMenuMusic, startVolumeWatcher,
+  isMusicEnabled, setMusicEnabled,
+} from "../audio/Audio";
 
 type Scene = "loading" | "menu" | "game" | "postgame";
 
@@ -45,22 +48,26 @@ export class App {
 
   async start() {
     this.showLoading();
-    // Heavy bootstrapping that needs to happen exactly once.
-    await RAPIER.init();
-    // Tiny pause so the loading screen is actually visible even on a fast
-    // localhost cache hit — a flash of nothing reads as a bug.
-    await delay(450);
-    // Switch the loading screen into "press any key" mode and wait for the
-    // user to dismiss it. This doubles as the audio-unlock gesture browsers
-    // require before letting us play sound.
+    // Kick off the heavy bootstrap (Rapier WASM) in parallel — we don't
+    // await it here so the loading screen can show the "press any key"
+    // prompt instantly. Browsers won't let us play sound until the user
+    // has interacted with the page, so the prompt is what gates audio.
+    const rapierReady = RAPIER.init();
+    // Show "press to continue" immediately so the user can dismiss the
+    // splash and the music starts as soon as the loading screen is up.
     document.body.classList.add("ready");
     await this.waitForUserGesture();
-    // The gesture has unlocked autoplay — kick off the master volume watcher
-    // and the menu music. The music keeps playing through menu↔postgame and
-    // is stopped only when an in-game session begins.
+    // The gesture has unlocked autoplay — kick off the master volume
+    // watcher and the menu music. Music starts now, while Rapier might
+    // still be downloading; if Rapier wasn't cached the player gets a
+    // few seconds of music over the loading screen.
     unlockAudio();
     startVolumeWatcher();
     void startMenuMusic();
+    // Now wait for the bootstrap promise to finish before showing the
+    // menu (it's usually done by the time the user has clicked, but on
+    // a cold cache it can still be pending).
+    await rapierReady;
     this.hideLoading();
     this.showMenu();
   }
@@ -168,6 +175,14 @@ export class App {
         this.persistSelection();
         void e; // no-op; default action proceeds
       });
+    this.screens.querySelector<HTMLButtonElement>("#music-toggle")
+      ?.addEventListener("click", () => {
+        const next = !isMusicEnabled();
+        setMusicEnabled(next);
+        if (next) void startMenuMusic();
+        // Re-render the menu so the button label updates.
+        this.showMenu();
+      });
   }
 
   private bindPostgame(result: GameResult): void {
@@ -218,10 +233,6 @@ function ensureElement(id: string): HTMLElement {
   const el = document.getElementById(id);
   if (!el) throw new Error(`#${id} not found`);
   return el;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 // ── scene HTML ────────────────────────────────────────────────────────────
@@ -289,6 +300,9 @@ function renderMenu(app: App): string {
 
       <div class="menu-footer">
         <a id="open-editor" class="link-btn" href="${import.meta.env.BASE_URL}editor.html">Level editor →</a>
+        <button id="music-toggle" class="link-btn" type="button" aria-pressed="${isMusicEnabled()}">
+          ${isMusicEnabled() ? "♪ Music: ON" : "♪ Music: OFF"}
+        </button>
         <button id="start-match" class="primary">Start</button>
       </div>
     </div>

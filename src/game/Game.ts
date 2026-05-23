@@ -5,7 +5,7 @@ import { Bullet } from "./Bullet";
 import { HomingMissile } from "./HomingMissile";
 import { Camera } from "./Camera";
 import {
-  KeyboardInput, GamepadInput, orInputs,
+  KeyboardInput, GamepadInput, TouchInput, orInputs, hasTouch,
   PLAYER1_KEYS, PLAYER2_KEYS, type KeyBinding,
 } from "./Input";
 import { GlowLayer, ParticleSystem } from "../render/fx";
@@ -136,6 +136,9 @@ export class Game {
   private cameraShake = { amp: 0, decay: 6 };
   private input = new KeyboardInput();
   private gamepads = new GamepadInput();
+  /** On-screen controls for phones / tablets. Attached only on touch
+   *  devices and only feeds P1 — split-screen on a phone is impractical. */
+  private touch = new TouchInput();
   private players: Player[] = [];
   private bullets: Bullet[] = [];
   private missiles: HomingMissile[] = [];
@@ -161,6 +164,12 @@ export class Game {
   /** True once a winner / finisher has been determined — gates the callback
    *  so we only fire it once and don't tick further game logic. */
   private matchEnded = false;
+  /** Pre-match countdown timer. >0 means "still counting down" — input is
+   *  blocked and matchElapsed doesn't tick. The HUD turns this into a big
+   *  "3 / 2 / 1 / GO!" overlay. */
+  private countdownRemaining = 0;
+  /** DOM element for the countdown overlay, populated while it counts. */
+  private countdownEl: HTMLElement | null = null;
 
   constructor(private mount: HTMLElement, config?: GameConfig) {
     // Default to duel from the URL hash so older bookmarks still work.
@@ -335,6 +344,7 @@ export class Game {
     new SettingsPanel();
     this.input.attach();
     this.gamepads.attach();
+    if (hasTouch()) this.touch.attach();
 
     // Audio: unlock the audio context on the first user interaction so the
     // browser autoplay policy is satisfied. Volume slider feeds master gain.
@@ -538,6 +548,11 @@ export class Game {
 
   start() {
     this.lastTime = performance.now();
+    // Pre-match countdown — 3 seconds total. Input is blocked and
+    // matchElapsed stays at 0 until it hits zero ("GO!"). Each second a
+    // pitched chime plays; the "GO!" gets a brighter chime.
+    this.countdownRemaining = 3.0;
+    this.buildCountdownOverlay();
     this.app.ticker.add(this.tick);
   }
 
@@ -545,7 +560,82 @@ export class Game {
     this.app.ticker.remove(this.tick);
     this.input.detach();
     this.gamepads.detach();
+    this.touch.detach();
   }
+
+  /** Create the centred 3-2-1-GO overlay. The DOM lives outside Pixi so we
+   *  can use crisp browser-native typography at any DPR. */
+  private buildCountdownOverlay(): void {
+    const el = document.createElement("div");
+    el.id = "countdown";
+    el.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(1);
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 180px;
+      font-weight: 800;
+      color: #ffd166;
+      text-shadow: 0 6px 0 #0a0414, 0 0 32px rgba(255,209,102,0.55),
+                   0 0 64px rgba(255,209,102,0.3);
+      letter-spacing: 0.05em;
+      user-select: none;
+      pointer-events: none;
+      z-index: 70;
+      will-change: transform, opacity;
+      transition: transform .25s cubic-bezier(.2,.8,.25,1), opacity .25s ease-out;
+    `;
+    el.textContent = "3";
+    document.body.appendChild(el);
+    this.countdownEl = el;
+  }
+
+  /** Advance the countdown timer, swap the visible number on each second
+   *  boundary, and remove the overlay when it hits zero. */
+  private updateCountdown(dt: number): void {
+    const prevWhole = Math.ceil(this.countdownRemaining);
+    this.countdownRemaining -= dt;
+    const nextWhole = Math.ceil(this.countdownRemaining);
+    const el = this.countdownEl;
+    if (!el) return;
+
+    if (this.countdownRemaining <= 0) {
+      // Done — flash "GO!" briefly then remove.
+      if (el.textContent !== "GO!") {
+        el.textContent = "GO!";
+        el.style.color = "#9eff8e";
+        el.style.fontSize = "220px";
+        // Bright chime on go.
+        playSpawn();
+      }
+      // Linger ~0.4s then fade out so the player gets a visible "GO!".
+      this.countdownRemaining = 0;
+      this.countdownFinishLinger -= dt;
+      if (this.countdownFinishLinger <= 0) {
+        el.style.opacity = "0";
+        setTimeout(() => el.remove(), 300);
+        this.countdownEl = null;
+      }
+      return;
+    }
+
+    // Tick — when the integer second changes, play a chime and reset the
+    // scale "pop" animation so each number lands punchier.
+    if (nextWhole !== prevWhole) {
+      el.textContent = String(nextWhole);
+      el.style.transform = "translate(-50%, -50%) scale(1.4)";
+      // Brief reset so the scale anim plays. requestAnimationFrame is
+      // enough — the CSS transition kicks in on the next frame.
+      requestAnimationFrame(() => {
+        el.style.transform = "translate(-50%, -50%) scale(1)";
+      });
+      playWallHit(); // a soft click on each count
+    }
+  }
+  /** Set to a small positive value when countdown hits 0 so "GO!" lingers
+   *  for a brief moment before fading. */
+  private countdownFinishLinger = 0.45;
 
   /** Tear down the Pixi canvas + all DOM the game added (scoreboard, settings
    *  panel, etc.) so the menu can render a clean slate. Safe to call twice. */
@@ -554,7 +644,7 @@ export class Game {
     // Pixi app removal — destroys the canvas + GL context.
     try { this.app.destroy(true, { children: true, texture: true }); } catch { /* ignore */ }
     // DOM cruft that Game appends to <body>.
-    for (const id of ["scoreboard", "settings-panel", "race-hud"]) {
+    for (const id of ["scoreboard", "settings-panel", "race-hud", "countdown", "touch-controls"]) {
       document.getElementById(id)?.remove();
     }
   }
@@ -565,7 +655,12 @@ export class Game {
     this.lastTime = now;
     if (dt > 0.25) dt = 0.25;
 
-    if (!this.matchEnded) this.matchElapsed += dt;
+    // Countdown phase — block matchElapsed and update the overlay.
+    if (this.countdownRemaining > 0) {
+      this.updateCountdown(dt);
+    } else if (!this.matchEnded) {
+      this.matchElapsed += dt;
+    }
 
     this.accumulator += dt;
     while (this.accumulator >= PHYS_DT) {
@@ -661,11 +756,19 @@ export class Game {
       }
       const ship = p.ship!;
       p.prev = ship.snapshot();
-      // Keyboard + gamepad — either device can drive the ship.
-      const input = orInputs(
-        this.input.read(p.cfg.binding),
-        this.gamepads.read(p.cfg.gamepad),
-      );
+      // Keyboard + gamepad + (P1 only) touch — any device can drive the
+      // ship. Input is fully ignored while the pre-match countdown is
+      // running so players can't drift off the start line during "3-2-1".
+      const liveInput = this.countdownRemaining > 0
+        ? { thrust: false, rotateLeft: false, rotateRight: false, fire: false, special: false }
+        : (() => {
+            const combo = orInputs(
+              this.input.read(p.cfg.binding),
+              this.gamepads.read(p.cfg.gamepad),
+            );
+            return p.cfg.index === 0 ? orInputs(combo, this.touch.read()) : combo;
+          })();
+      const input = liveInput;
       ship.applyInput(input);
 
       p.fireCooldown = Math.max(0, p.fireCooldown - PHYS_DT);
