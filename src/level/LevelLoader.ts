@@ -356,109 +356,131 @@ function drawDecorations(
   }
 }
 
-/** Grey rock clump — 10×6 pixel-art chunk that reads from across the
- *  cave. Bright top-edge highlight, dark bottom shadow, mid body. */
+/** Grey rock clump — 10×6 pixel-art chunk drawn at 4× scale so it reads
+ *  as a proper boulder next to the ships. Bright top-edge highlight,
+ *  dark bottom shadow, mid body. */
 function drawRock(ctx: AnyCtx2D, px: number, py: number, theme: LevelTheme): void {
   const mid = theme.rockLight;
   const dark = theme.rockMid;
   const hi = theme.rockRim;
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.scale(DECO_SCALE, DECO_SCALE);
   // 10×6 base shape — wider than tall, flat bottom, irregular top.
   ctx.fillStyle = mid;
-  ctx.fillRect(px - 4, py - 1, 10, 5);    // body
-  ctx.fillRect(px - 3, py - 2, 8, 1);     // upper bulge
-  ctx.fillRect(px - 1, py - 3, 5, 1);     // peak
+  ctx.fillRect(-4, -1, 10, 5);    // body
+  ctx.fillRect(-3, -2, 8, 1);     // upper bulge
+  ctx.fillRect(-1, -3, 5, 1);     // peak
   // Top highlight along the lit side (upper-left).
   ctx.fillStyle = hi;
-  ctx.fillRect(px - 1, py - 3, 3, 1);
-  ctx.fillRect(px - 3, py - 2, 3, 1);
-  ctx.fillRect(px - 4, py - 1, 2, 1);
+  ctx.fillRect(-1, -3, 3, 1);
+  ctx.fillRect(-3, -2, 3, 1);
+  ctx.fillRect(-4, -1, 2, 1);
   // Shadow on the underside / lower-right.
   ctx.fillStyle = dark;
-  ctx.fillRect(px + 2, py + 2, 4, 2);
-  ctx.fillRect(px + 4, py + 1, 2, 1);
+  ctx.fillRect(2, 2, 4, 2);
+  ctx.fillRect(4, 1, 2, 1);
+  ctx.restore();
 }
 
-/** Small green plant — 5 wide × 5 tall sprout that pops off the cave
- *  floor. Lit leaves, darker mid-blades, central stem. */
+/** Scale factor for every non-crystal decoration. 4× means a 10×6 sprite
+ *  ends up 40×24 texture pixels, ≈5m × 3m in world space — comparable
+ *  to (slightly bigger than) a 2m ship. */
+const DECO_SCALE = 4;
+
+/** Small green plant — 5 wide × 5 tall sprout drawn at 4× scale. */
 function drawPlant(ctx: AnyCtx2D, px: number, py: number, theme: LevelTheme): void {
   void theme;
   const leaf = "#5ed884";
   const leafDark = "#2a7a48";
   const stem = "#3a9858";
   const tip = "#a8f0c0";
-  // Stem column (3 tall).
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.scale(DECO_SCALE, DECO_SCALE);
+  // Stem column.
   ctx.fillStyle = stem;
-  ctx.fillRect(px, py - 1, 1, 3);
+  ctx.fillRect(0, -1, 1, 3);
   // Side leaves — upward V.
   ctx.fillStyle = leaf;
-  ctx.fillRect(px - 2, py - 3, 1, 1);
-  ctx.fillRect(px - 3, py - 2, 1, 1);
-  ctx.fillRect(px - 2, py - 1, 1, 1);
-  ctx.fillRect(px + 2, py - 3, 1, 1);
-  ctx.fillRect(px + 3, py - 2, 1, 1);
-  ctx.fillRect(px + 2, py - 1, 1, 1);
+  ctx.fillRect(-2, -3, 1, 1);
+  ctx.fillRect(-3, -2, 1, 1);
+  ctx.fillRect(-2, -1, 1, 1);
+  ctx.fillRect(2, -3, 1, 1);
+  ctx.fillRect(3, -2, 1, 1);
+  ctx.fillRect(2, -1, 1, 1);
   // Centre leaf cluster.
-  ctx.fillRect(px - 1, py - 4, 3, 1);
-  ctx.fillRect(px - 1, py - 3, 3, 1);
+  ctx.fillRect(-1, -4, 3, 1);
+  ctx.fillRect(-1, -3, 3, 1);
   // Mid-leaf shadow.
   ctx.fillStyle = leafDark;
-  ctx.fillRect(px, py - 3, 1, 1);
-  ctx.fillRect(px - 1, py - 2, 1, 1);
-  ctx.fillRect(px + 1, py - 2, 1, 1);
+  ctx.fillRect(0, -3, 1, 1);
+  ctx.fillRect(-1, -2, 1, 1);
+  ctx.fillRect(1, -2, 1, 1);
   // Bright tip.
   ctx.fillStyle = tip;
-  ctx.fillRect(px, py - 4, 1, 1);
+  ctx.fillRect(0, -4, 1, 1);
+  ctx.restore();
 }
 
-/** Yellow / black warning sign — 5 wide × 8 tall on a brown post. */
+/** Yellow / black warning sign — 5 wide × 8 tall on a brown post,
+ *  drawn at 4× scale. */
 function drawSign(ctx: AnyCtx2D, px: number, py: number, theme: LevelTheme): void {
   void theme;
   const post = "#5a4a3a";
   const postHi = "#8a7a5a";
   const yellow = "#ffd166";
   const black = "#1a0a0a";
-  // Post — 1×4 tall.
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.scale(DECO_SCALE, DECO_SCALE);
+  // Post.
   ctx.fillStyle = post;
-  ctx.fillRect(px, py - 3, 1, 4);
+  ctx.fillRect(0, -3, 1, 4);
   ctx.fillStyle = postHi;
-  ctx.fillRect(px - 1, py, 1, 1);
+  ctx.fillRect(-1, 0, 1, 1);
   // Sign panel — 5×4 rectangle above the post.
   ctx.fillStyle = yellow;
-  ctx.fillRect(px - 2, py - 7, 5, 4);
+  ctx.fillRect(-2, -7, 5, 4);
   // Black border.
   ctx.fillStyle = black;
-  ctx.fillRect(px - 2, py - 7, 5, 1);
-  ctx.fillRect(px - 2, py - 4, 5, 1);
-  ctx.fillRect(px - 2, py - 7, 1, 4);
-  ctx.fillRect(px + 2, py - 7, 1, 4);
+  ctx.fillRect(-2, -7, 5, 1);
+  ctx.fillRect(-2, -4, 5, 1);
+  ctx.fillRect(-2, -7, 1, 4);
+  ctx.fillRect(2, -7, 1, 4);
   // Exclamation glyph inside.
-  ctx.fillRect(px, py - 6, 1, 2);
-  ctx.fillRect(px, py - 3, 1, 1);
+  ctx.fillRect(0, -6, 1, 2);
+  ctx.fillRect(0, -3, 1, 1);
+  ctx.restore();
 }
 
-/** Skull — 5 wide × 5 tall with prominent eye sockets and a jaw. */
+/** Skull — 5 wide × 5 tall, drawn at 4× scale. */
 function drawSkull(ctx: AnyCtx2D, px: number, py: number): void {
   const bone = "#e8e4d4";
   const boneShadow = "#a8a496";
   const shadow = "#3a3630";
-  // Cranium — 5×3 rounded top.
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.scale(DECO_SCALE, DECO_SCALE);
+  // Cranium.
   ctx.fillStyle = bone;
-  ctx.fillRect(px - 2, py - 3, 5, 3);
-  ctx.fillRect(px - 1, py - 4, 3, 1);
-  // Jaw — narrower, 3×2.
-  ctx.fillRect(px - 1, py, 3, 1);
-  ctx.fillRect(px, py + 1, 1, 1);
+  ctx.fillRect(-2, -3, 5, 3);
+  ctx.fillRect(-1, -4, 3, 1);
+  // Jaw.
+  ctx.fillRect(-1, 0, 3, 1);
+  ctx.fillRect(0, 1, 1, 1);
   ctx.fillStyle = boneShadow;
-  ctx.fillRect(px - 2, py - 1, 1, 1);
-  ctx.fillRect(px + 2, py - 1, 1, 1);
-  // Eye sockets — dark voids.
+  ctx.fillRect(-2, -1, 1, 1);
+  ctx.fillRect(2, -1, 1, 1);
+  // Eye sockets.
   ctx.fillStyle = shadow;
-  ctx.fillRect(px - 1, py - 2, 1, 1);
-  ctx.fillRect(px + 1, py - 2, 1, 1);
+  ctx.fillRect(-1, -2, 1, 1);
+  ctx.fillRect(1, -2, 1, 1);
   // Nose hole.
-  ctx.fillRect(px, py - 1, 1, 1);
-  // Tooth gap in the jaw.
-  ctx.fillRect(px, py, 1, 1);
+  ctx.fillRect(0, -1, 1, 1);
+  // Tooth gap.
+  ctx.fillRect(0, 0, 1, 1);
+  ctx.restore();
 }
 
 function drawCrystal(
