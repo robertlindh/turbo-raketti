@@ -159,4 +159,13 @@ export const tropulus: Level = {
     // A welcoming signpost near the right spawn.
     { type: "sign",    x: 90, y: -36 },
   ],
+  // Race checkpoints — a clockwise figure-8-ish loop that skirts the
+  // pine tree on the left, the mökki hut on the right, and forces a
+  // pass through both the upper sky and the lower valley.
+  checkpoints: [
+    { x: -88, y: 24 },   // 1 — left side, below the pine
+    { x: 0, y: -38 },    // 2 — top of the valley between the spawns
+    { x: 88, y: 24 },    // 3 — right side, past the mökki
+    { x: 0, y: 40 },     // 4 — lower mid valley
+  ],
 };

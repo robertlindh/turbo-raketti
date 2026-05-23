@@ -161,4 +161,13 @@ export const ekolos: Level = {
     // Warning sign by the central boulder cluster.
     { type: "sign",    x: -24, y: -2 },
   ],
+  // Race checkpoints — a clockwise loop around the central boulder
+  // cluster. Each point sits well inside the playable interior with
+  // plenty of clearance from the surrounding obstacles.
+  checkpoints: [
+    { x: -84, y: 24 },   // 1 — left chamber, below the spawns
+    { x: -32, y: -38 },  // 2 — top-left, between roots and ceiling
+    { x: 80, y: -28 },   // 3 — right side, above the boulder mound
+    { x: 36, y: 36 },    // 4 — lower-right, sweeping past the floor mound
+  ],
 };
