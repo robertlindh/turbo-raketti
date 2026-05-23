@@ -29,6 +29,14 @@ export class App {
   private selectedMode: GameMode = "duel";
   private selectedLevelId = "metarola";
 
+  /** rAF handle for the gamepad navigation poll loop. Non-null while
+   *  the menu or postgame is visible. */
+  private menuNavRaf: number | null = null;
+  /** Previously-pressed gamepad buttons + previously-flipped axes, so
+   *  we react to rising edges only and don't auto-scroll on hold. */
+  private gpPrevButtons: boolean[] = [];
+  private gpPrevAxis = { x: 0, y: 0 };
+
   constructor() {
     this.screens = ensureElement("screens");
     this.gameMount = ensureElement("app");
@@ -79,17 +87,38 @@ export class App {
 
   private waitForUserGesture(): Promise<void> {
     return new Promise((resolve) => {
+      let padRaf: number | null = null;
+      const cleanup = () => {
+        window.removeEventListener("keydown", onAny);
+        window.removeEventListener("pointerdown", onAny);
+        if (padRaf !== null) cancelAnimationFrame(padRaf);
+      };
       const onAny = (e: Event) => {
         // Ignore modifier-only keypresses so things like alt-tab don't dismiss.
         if (e instanceof KeyboardEvent) {
           if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
         }
-        window.removeEventListener("keydown", onAny);
-        window.removeEventListener("pointerdown", onAny);
+        cleanup();
         resolve();
       };
       window.addEventListener("keydown", onAny);
       window.addEventListener("pointerdown", onAny);
+
+      // Also accept a gamepad button press as the start gesture so the
+      // splash can be dismissed without picking up a keyboard.
+      const pollPad = () => {
+        const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+        for (const pad of pads) {
+          if (!pad) continue;
+          if (pad.buttons.some((b) => b.pressed)) {
+            cleanup();
+            resolve();
+            return;
+          }
+        }
+        padRaf = requestAnimationFrame(pollPad);
+      };
+      padRaf = requestAnimationFrame(pollPad);
     });
   }
 
@@ -118,6 +147,10 @@ export class App {
     this.setScene("menu");
     this.screens.innerHTML = renderMenu(this);
     this.bindMenu();
+    // Focus the first focusable button so keyboard + gamepad nav have a
+    // starting point, and the user immediately sees what's selectable.
+    this.focusFirst();
+    this.startMenuGamepadNav();
     // Resume the menu loop on return from postgame / Esc-out-of-match.
     void startMenuMusic();
   }
@@ -126,6 +159,7 @@ export class App {
     this.persistSelection();
     // Silence the menu loop — the game's own SFX takes over from here.
     stopMenuMusic();
+    this.stopMenuGamepadNav();
     this.setScene("game");
     this.screens.innerHTML = "";
     this.currentGame = new Game(this.gameMount, {
@@ -155,6 +189,8 @@ export class App {
     this.setScene("postgame");
     this.screens.innerHTML = renderPostgame(result);
     this.bindPostgame(result);
+    this.focusFirst();
+    this.startMenuGamepadNav();
   }
 
   // ── event wiring ────────────────────────────────────────────────────────
@@ -218,6 +254,109 @@ export class App {
       ?.addEventListener("click", () => this.showMenu());
   }
 
+  // ── focus + gamepad navigation ──────────────────────────────────────────
+
+  /** Set the keyboard focus to the first focusable element in the current
+   *  screen. Used right after rendering menu/postgame so gamepad and
+   *  keyboard users immediately see what's selectable. */
+  private focusFirst(): void {
+    const first = this.screens.querySelector<HTMLElement>(this.focusableSelector());
+    first?.focus();
+  }
+
+  /** Selector for elements gamepad nav can land on. Excludes text inputs
+   *  so they don't steal focus while initials are being typed. */
+  private focusableSelector(): string {
+    return [
+      "button:not([disabled])",
+      ".link-btn",
+      ".mode-pick",
+      ".level-pick",
+      "[tabindex]:not([tabindex='-1'])",
+    ].join(",");
+  }
+
+  /** Start polling the first connected gamepad for menu navigation.
+   *  Maps D-pad / left-stick to focus moves and the A button to a click
+   *  on the currently focused element. Safe to call repeatedly. */
+  private startMenuGamepadNav(): void {
+    if (this.menuNavRaf !== null) return;
+    this.gpPrevButtons = [];
+    this.gpPrevAxis = { x: 0, y: 0 };
+    const tick = () => {
+      // Stop polling if we've left the menu / postgame scenes.
+      if (this.currentScene !== "menu" && this.currentScene !== "postgame") {
+        this.menuNavRaf = null;
+        return;
+      }
+      this.pollGamepadOnce();
+      this.menuNavRaf = requestAnimationFrame(tick);
+    };
+    this.menuNavRaf = requestAnimationFrame(tick);
+  }
+
+  private stopMenuGamepadNav(): void {
+    if (this.menuNavRaf !== null) {
+      cancelAnimationFrame(this.menuNavRaf);
+      this.menuNavRaf = null;
+    }
+  }
+
+  private pollGamepadOnce(): void {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const pad of pads) {
+      if (!pad) continue;
+      const buttons = pad.buttons.map((b) => b.pressed);
+      const rising = (i: number) =>
+        !!buttons[i] && !this.gpPrevButtons[i];
+
+      // D-pad: 12=up, 13=down, 14=left, 15=right.
+      // Treat up/left as "previous", down/right as "next" so focus walks
+      // through the DOM in reading order.
+      if (rising(13) || rising(15)) this.moveFocus(1);
+      if (rising(12) || rising(14)) this.moveFocus(-1);
+
+      // Analog left stick — same effect as D-pad but only on edge crossing
+      // a 0.55 deadzone so a tilted stick doesn't auto-scroll.
+      const ax = pad.axes[0] ?? 0;
+      const ay = pad.axes[1] ?? 0;
+      const dz = 0.55;
+      const xEdge = Math.sign(Math.abs(ax) > dz ? ax : 0);
+      const yEdge = Math.sign(Math.abs(ay) > dz ? ay : 0);
+      const xPrev = Math.sign(Math.abs(this.gpPrevAxis.x) > dz ? this.gpPrevAxis.x : 0);
+      const yPrev = Math.sign(Math.abs(this.gpPrevAxis.y) > dz ? this.gpPrevAxis.y : 0);
+      if (xEdge !== xPrev) {
+        if (xEdge > 0) this.moveFocus(1);
+        else if (xEdge < 0) this.moveFocus(-1);
+      }
+      if (yEdge !== yPrev) {
+        if (yEdge > 0) this.moveFocus(1);
+        else if (yEdge < 0) this.moveFocus(-1);
+      }
+      this.gpPrevAxis = { x: ax, y: ay };
+
+      // A button (0) or Start (9) clicks the focused element.
+      if (rising(0) || rising(9)) {
+        const active = document.activeElement as HTMLElement | null;
+        if (active && this.screens.contains(active)) active.click();
+      }
+
+      this.gpPrevButtons = buttons;
+      break; // only honour the first connected pad
+    }
+  }
+
+  private moveFocus(delta: number): void {
+    const list = Array.from(
+      this.screens.querySelectorAll<HTMLElement>(this.focusableSelector()),
+    );
+    if (list.length === 0) return;
+    const current = document.activeElement as HTMLElement | null;
+    const idx = current ? list.indexOf(current) : -1;
+    const nextIdx = (idx + delta + list.length) % list.length;
+    list[nextIdx]?.focus();
+  }
+
   // ── persistence ─────────────────────────────────────────────────────────
 
   private persistSelection(): void {
@@ -258,19 +397,31 @@ function renderMenu(app: App): string {
     `;
   }).join("");
 
-  const modeButtons = `
-    <button class="mode-pick ${mode === "time-trial" ? "active" : ""}" data-mode="time-trial">
-      <strong>Time Trial</strong>
-      <span>1 spelare • race mot klockan</span>
-    </button>
-    <button class="mode-pick ${mode === "race" ? "active" : ""}" data-mode="race">
-      <strong>Race 2P</strong>
-      <span>2 spelare • first to finish</span>
-    </button>
-    <button class="mode-pick ${mode === "duel" ? "active" : ""}" data-mode="duel">
-      <strong>Duell</strong>
-      <span>2 spelare • first to ${5} frags</span>
-    </button>
+  // Race-style modes (time-trial + 2P race) get their own group; combat
+  // (duel) is visually separated as a distinct mode below.
+  const modeGroups = `
+    <div class="mode-group race-group">
+      <div class="mode-group-label">🏁 Race · mot klockan</div>
+      <div class="mode-picks">
+        <button class="mode-pick race ${mode === "time-trial" ? "active" : ""}" data-mode="time-trial">
+          <strong>Time Trial</strong>
+          <span>1 spelare</span>
+        </button>
+        <button class="mode-pick race ${mode === "race" ? "active" : ""}" data-mode="race">
+          <strong>Race 2P</strong>
+          <span>2 spelare · first to finish</span>
+        </button>
+      </div>
+    </div>
+    <div class="mode-group combat-group">
+      <div class="mode-group-label">⚔️ Combat · skjut motståndaren</div>
+      <div class="mode-picks">
+        <button class="mode-pick combat ${mode === "duel" ? "active" : ""}" data-mode="duel">
+          <strong>Duell</strong>
+          <span>2 spelare · first to ${5} frags</span>
+        </button>
+      </div>
+    </div>
   `;
 
   const scoresHtml = board.length
@@ -293,7 +444,7 @@ function renderMenu(app: App): string {
       <div class="menu-body">
         <section>
           <h2>Läge</h2>
-          <div class="mode-picks">${modeButtons}</div>
+          ${modeGroups}
         </section>
 
         <section>
