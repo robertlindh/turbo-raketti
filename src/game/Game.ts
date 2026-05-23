@@ -447,6 +447,13 @@ export class Game {
     const ship = new Ship(this.physics, this.app.renderer, this.worldLayer, {
       x: cfg.spawn.x, y: cfg.spawn.y, color: cfg.color, angle: -Math.PI / 2,
     });
+    // Race-mode tuning: -10% thrust (heavier feel) + 30% higher top
+    // speed (longer straights pay off). Time-trial + duel + wave stay
+    // on the default 1.0/1.0 ratios.
+    if (this.config.mode === "race") {
+      ship.thrustMultiplier = 0.9;
+      ship.maxSpeedMultiplier = 1.3;
+    }
     this.shipHandleToPlayer.set(ship.collider.handle, cfg.index);
     return {
       cfg,

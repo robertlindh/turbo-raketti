@@ -29,6 +29,11 @@ export class Ship {
   private shieldPhase = 0;
   /** True while thrust was applied in the most recent applyInput(). */
   thrustOn = false;
+  /** Multipliers on the global thrust + max-speed settings, allowing
+   *  per-mode tuning. Game.ts sets these after construction; default 1.0
+   *  leaves the ship feeling identical to before. */
+  thrustMultiplier = 1.0;
+  maxSpeedMultiplier = 1.0;
 
   constructor(
     physics: PhysicsWorld,
@@ -133,16 +138,18 @@ export class Ship {
     this.thrustOn = input.thrust;
     if (input.thrust) {
       const angle = this.body.rotation();
-      const fx = Math.cos(angle) * SETTINGS.shipThrust * PHYS_DT;
-      const fy = Math.sin(angle) * SETTINGS.shipThrust * PHYS_DT;
+      const thrust = SETTINGS.shipThrust * this.thrustMultiplier;
+      const fx = Math.cos(angle) * thrust * PHYS_DT;
+      const fy = Math.sin(angle) * thrust * PHYS_DT;
       const mass = this.body.mass();
       this.body.applyImpulse({ x: fx * mass, y: fy * mass }, true);
     }
 
     const v = this.body.linvel();
     const sp = Math.hypot(v.x, v.y);
-    if (sp > SETTINGS.shipMaxSpeed) {
-      const k = SETTINGS.shipMaxSpeed / sp;
+    const maxSpeed = SETTINGS.shipMaxSpeed * this.maxSpeedMultiplier;
+    if (sp > maxSpeed) {
+      const k = maxSpeed / sp;
       this.body.setLinvel({ x: v.x * k, y: v.y * k }, true);
     }
   }
