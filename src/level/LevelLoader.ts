@@ -356,83 +356,109 @@ function drawDecorations(
   }
 }
 
-/** Grey rock clump — 5×3 pixel-art chunk with two highlights and one dark
- *  shadow line, palette tuned from the level's rock colours. */
+/** Grey rock clump — 10×6 pixel-art chunk that reads from across the
+ *  cave. Bright top-edge highlight, dark bottom shadow, mid body. */
 function drawRock(ctx: AnyCtx2D, px: number, py: number, theme: LevelTheme): void {
   const mid = theme.rockLight;
   const dark = theme.rockMid;
   const hi = theme.rockRim;
-  // Base shape — flat-bottomed pentagon.
-  //   .##..
-  //   #####
-  //   #####
+  // 10×6 base shape — wider than tall, flat bottom, irregular top.
   ctx.fillStyle = mid;
-  ctx.fillRect(px - 2, py, 5, 1);
-  ctx.fillRect(px - 2, py + 1, 5, 1);
-  ctx.fillRect(px - 1, py - 1, 3, 1);
-  // Top highlight.
+  ctx.fillRect(px - 4, py - 1, 10, 5);    // body
+  ctx.fillRect(px - 3, py - 2, 8, 1);     // upper bulge
+  ctx.fillRect(px - 1, py - 3, 5, 1);     // peak
+  // Top highlight along the lit side (upper-left).
   ctx.fillStyle = hi;
-  ctx.fillRect(px - 1, py - 1, 2, 1);
-  ctx.fillRect(px - 2, py, 1, 1);
-  // Bottom shadow.
+  ctx.fillRect(px - 1, py - 3, 3, 1);
+  ctx.fillRect(px - 3, py - 2, 3, 1);
+  ctx.fillRect(px - 4, py - 1, 2, 1);
+  // Shadow on the underside / lower-right.
   ctx.fillStyle = dark;
-  ctx.fillRect(px + 1, py + 1, 2, 1);
+  ctx.fillRect(px + 2, py + 2, 4, 2);
+  ctx.fillRect(px + 4, py + 1, 2, 1);
 }
 
-/** Small green plant — a 3-tall sprout. Colour derives from the accent
- *  but greener; works for both grass and alien flora. */
+/** Small green plant — 5 wide × 5 tall sprout that pops off the cave
+ *  floor. Lit leaves, darker mid-blades, central stem. */
 function drawPlant(ctx: AnyCtx2D, px: number, py: number, theme: LevelTheme): void {
   void theme;
   const leaf = "#5ed884";
   const leafDark = "#2a7a48";
   const stem = "#3a9858";
-  // Two side leaves + a centre stem.
-  //   .#.#.
-  //   ##.##
-  //   .#.#.    (stem column)
-  //   ..s..
-  ctx.fillStyle = leaf;
-  ctx.fillRect(px - 1, py - 2, 1, 1);
-  ctx.fillRect(px + 1, py - 2, 1, 1);
-  ctx.fillRect(px - 2, py - 1, 2, 1);
-  ctx.fillRect(px + 1, py - 1, 2, 1);
-  ctx.fillStyle = leafDark;
-  ctx.fillRect(px - 1, py - 1, 1, 1);
-  ctx.fillRect(px + 1, py - 1, 1, 1);
+  const tip = "#a8f0c0";
+  // Stem column (3 tall).
   ctx.fillStyle = stem;
-  ctx.fillRect(px, py - 2, 1, 3);
-}
-
-/** Yellow / black warning sign on a post. 3×5 pixel total. */
-function drawSign(ctx: AnyCtx2D, px: number, py: number, theme: LevelTheme): void {
-  void theme;
-  const post = "#5a4a3a";
-  const yellow = "#ffd166";
-  const black = "#1a0a0a";
-  // Post.
-  ctx.fillStyle = post;
   ctx.fillRect(px, py - 1, 1, 3);
-  // Sign panel — diamond with black warning stripe.
-  ctx.fillStyle = yellow;
+  // Side leaves — upward V.
+  ctx.fillStyle = leaf;
+  ctx.fillRect(px - 2, py - 3, 1, 1);
+  ctx.fillRect(px - 3, py - 2, 1, 1);
+  ctx.fillRect(px - 2, py - 1, 1, 1);
+  ctx.fillRect(px + 2, py - 3, 1, 1);
+  ctx.fillRect(px + 3, py - 2, 1, 1);
+  ctx.fillRect(px + 2, py - 1, 1, 1);
+  // Centre leaf cluster.
+  ctx.fillRect(px - 1, py - 4, 3, 1);
   ctx.fillRect(px - 1, py - 3, 3, 1);
-  ctx.fillRect(px - 1, py - 2, 3, 1);
-  ctx.fillStyle = black;
+  // Mid-leaf shadow.
+  ctx.fillStyle = leafDark;
   ctx.fillRect(px, py - 3, 1, 1);
   ctx.fillRect(px - 1, py - 2, 1, 1);
   ctx.fillRect(px + 1, py - 2, 1, 1);
+  // Bright tip.
+  ctx.fillStyle = tip;
+  ctx.fillRect(px, py - 4, 1, 1);
 }
 
-/** Tiny skull — 3×3 with eye sockets. */
-function drawSkull(ctx: AnyCtx2D, px: number, py: number): void {
-  const bone = "#d8d4c4";
-  const shadow = "#7a766a";
-  ctx.fillStyle = bone;
-  ctx.fillRect(px - 1, py - 1, 3, 2);
-  ctx.fillRect(px, py + 1, 1, 1);
-  // Eye sockets.
-  ctx.fillStyle = shadow;
+/** Yellow / black warning sign — 5 wide × 8 tall on a brown post. */
+function drawSign(ctx: AnyCtx2D, px: number, py: number, theme: LevelTheme): void {
+  void theme;
+  const post = "#5a4a3a";
+  const postHi = "#8a7a5a";
+  const yellow = "#ffd166";
+  const black = "#1a0a0a";
+  // Post — 1×4 tall.
+  ctx.fillStyle = post;
+  ctx.fillRect(px, py - 3, 1, 4);
+  ctx.fillStyle = postHi;
   ctx.fillRect(px - 1, py, 1, 1);
-  ctx.fillRect(px + 1, py, 1, 1);
+  // Sign panel — 5×4 rectangle above the post.
+  ctx.fillStyle = yellow;
+  ctx.fillRect(px - 2, py - 7, 5, 4);
+  // Black border.
+  ctx.fillStyle = black;
+  ctx.fillRect(px - 2, py - 7, 5, 1);
+  ctx.fillRect(px - 2, py - 4, 5, 1);
+  ctx.fillRect(px - 2, py - 7, 1, 4);
+  ctx.fillRect(px + 2, py - 7, 1, 4);
+  // Exclamation glyph inside.
+  ctx.fillRect(px, py - 6, 1, 2);
+  ctx.fillRect(px, py - 3, 1, 1);
+}
+
+/** Skull — 5 wide × 5 tall with prominent eye sockets and a jaw. */
+function drawSkull(ctx: AnyCtx2D, px: number, py: number): void {
+  const bone = "#e8e4d4";
+  const boneShadow = "#a8a496";
+  const shadow = "#3a3630";
+  // Cranium — 5×3 rounded top.
+  ctx.fillStyle = bone;
+  ctx.fillRect(px - 2, py - 3, 5, 3);
+  ctx.fillRect(px - 1, py - 4, 3, 1);
+  // Jaw — narrower, 3×2.
+  ctx.fillRect(px - 1, py, 3, 1);
+  ctx.fillRect(px, py + 1, 1, 1);
+  ctx.fillStyle = boneShadow;
+  ctx.fillRect(px - 2, py - 1, 1, 1);
+  ctx.fillRect(px + 2, py - 1, 1, 1);
+  // Eye sockets — dark voids.
+  ctx.fillStyle = shadow;
+  ctx.fillRect(px - 1, py - 2, 1, 1);
+  ctx.fillRect(px + 1, py - 2, 1, 1);
+  // Nose hole.
+  ctx.fillRect(px, py - 1, 1, 1);
+  // Tooth gap in the jaw.
+  ctx.fillRect(px, py, 1, 1);
 }
 
 function drawCrystal(
