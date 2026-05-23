@@ -3,6 +3,7 @@ import { PhysicsWorld, PHYS_DT } from "./PhysicsWorld";
 import { Ship, SHIP_RADIUS } from "./Ship";
 import { Bullet } from "./Bullet";
 import { HomingMissile } from "./HomingMissile";
+import { Bot } from "./Bot";
 import { Camera } from "./Camera";
 import {
   KeyboardInput, GamepadInput, TouchInput, orInputs, hasTouch,
@@ -34,7 +35,7 @@ import { Minimap } from "../ui/Minimap";
 const KILL_SCORE = 1;
 const DUEL_TARGET_FRAGS = 5;
 
-export type GameMode = "time-trial" | "duel" | "race";
+export type GameMode = "time-trial" | "duel" | "race" | "wave";
 
 export interface GameConfig {
   mode: GameMode;
@@ -49,7 +50,8 @@ export interface GameConfig {
 export type GameResult =
   | { mode: "time-trial"; levelId: string; timeSeconds: number }
   | { mode: "duel"; levelId: string; winnerIndex: 0 | 1; winnerScore: number; loserScore: number }
-  | { mode: "race"; levelId: string; winnerIndex: 0 | 1; timeSeconds: number; loserLaps: number };
+  | { mode: "race"; levelId: string; winnerIndex: 0 | 1; timeSeconds: number; loserLaps: number }
+  | { mode: "wave"; levelId: string; score: number; survivedSeconds: number };
 
 /** Load a draft level saved by the level editor. Falls back to Metarola if
  *  the storage entry is missing or malformed — keeps the test-play link
@@ -149,6 +151,15 @@ export class Game {
    *  homing missiles both expose `alive`, `ownerIndex`, `color`, and `body`,
    *  so the collision handler can treat them uniformly. */
   private bulletByHandle = new Map<number, Bullet | HomingMissile>();
+  /** Active enemy bots in wave mode. Empty in every other mode. */
+  private bots: Bot[] = [];
+  /** Look up a Bot by its ship collider handle. Used by handleCollision to
+   *  detect bullet-hit-bot events without scanning the bot array. */
+  private botHandleToBot = new Map<number, Bot>();
+  /** Wave mode: number of bots the player has killed this run. */
+  private waveScore = 0;
+  /** Wave mode: countdown to the next bot spawn (seconds). */
+  private waveSpawnTimer = 1.5;
   private shipHandleToPlayer = new Map<number, number>();
   private accumulator = 0;
   private lastTime = 0;
@@ -231,6 +242,8 @@ export class Game {
     }));
     this.camera.zoom = 28;
     // Race-style modes pull the camera back so racers see the next gate.
+    // Wave (combat solo) keeps the close-in view since hitting bots needs
+    // precision rather than course awareness.
     this.camera.setWideMode(
       this.config.mode === "time-trial" || this.config.mode === "race",
     );
@@ -269,6 +282,9 @@ export class Game {
     loadLevel(renderer, this.physics, this.worldLayer, level);
     this.camera.setLevelBounds(level.bounds);
     this.waterZones = level.waterZones ?? [];
+    // Keep a reference for the bot spawner — Game itself doesn't otherwise
+    // need to know the full Level after init.
+    this._cachedLevel = level;
 
     // 2. Decal layer sits under ships so scorch marks read as on the wall.
     this.decals = new DecalLayer();
@@ -334,13 +350,16 @@ export class Game {
     this.minimap = new Minimap();
     this.minimap.setLevel(level);
 
-    // 3. Players spawn at the level's authored spawn points. Time-trial
-    //    is single-player; duel and race both spawn both ships.
+    // 3. Players spawn at the level's authored spawn points. Single-
+    //    player modes (time-trial, wave) only spawn P1; duel and race
+    //    both spawn both ships.
+    const isSinglePlayer =
+      this.config.mode === "time-trial" || this.config.mode === "wave";
     this.players.push(this.makePlayer({
       index: 0, color: 0x6cc0ff, binding: PLAYER1_KEYS, gamepad: 0,
       spawn: { x: level.spawns[0].x, y: level.spawns[0].y },
     }));
-    if (this.config.mode !== "time-trial") {
+    if (!isSinglePlayer) {
       this.players.push(this.makePlayer({
         index: 1, color: 0xff7a7a, binding: PLAYER2_KEYS, gamepad: 1,
         spawn: { x: level.spawns[1].x, y: level.spawns[1].y },
@@ -706,6 +725,21 @@ export class Game {
    *  match has already ended. */
   private checkWinCondition(): void {
     if (this.matchEnded) return;
+    if (this.config.mode === "wave") {
+      // Wave / combat solo — match ends the instant P1 dies. We finish
+      // before the respawn timer expires, so the player gets a single
+      // life per run.
+      const p1 = this.players[0];
+      if (p1 && !p1.alive) {
+        this.finishMatch({
+          mode: "wave",
+          levelId: this.levelId,
+          score: this.waveScore,
+          survivedSeconds: this.matchElapsed,
+        });
+      }
+      return;
+    }
     if (this.config.mode === "time-trial") {
       const target = Math.max(1, Math.round(SETTINGS.raceTargetLaps));
       if (this.racing && this.racing.laps[0] >= target) {
@@ -1012,6 +1046,7 @@ export class Game {
     this.decals.update(PHYS_DT);
     this.wreckage.update(PHYS_DT, SETTINGS.gravity);
     this.updateMines();
+    if (this.config.mode === "wave") this.updateBots();
 
     // Racing — visual update + checkpoint progress.
     if (this.racing) {
@@ -1143,6 +1178,29 @@ export class Game {
       return;
     }
 
+    // Bullet vs bot — one-shot kill in wave mode, scores a point for the
+    // shooter regardless of which player fired (in practice always P1).
+    const hitBot = this.botHandleToBot.get(otherHandle);
+    if (hitBot && hitBot.alive) {
+      bullet.alive = false;
+      const bp = hitBot.ship.body.translation();
+      this.particles.explode(bp.x, bp.y, 12, 0xa86bff, {
+        speedMin: 6, speedMax: 22, lifeMin: 0.2, lifeMax: 0.4,
+        sizeMin: 1.0, sizeMax: 1.8,
+      });
+      this.particles.explode(bp.x, bp.y, 8, 0xffd66e, {
+        speedMin: 4, speedMax: 14, lifeMin: 0.18, lifeMax: 0.32,
+        sizeMin: 1.0, sizeMax: 1.6,
+      });
+      this.glow.burst(bp.x, bp.y, 1.6, 0xa86bff, 0.22);
+      this.wreckage.spawn(bp.x, bp.y, 0xa86bff, 5);
+      this.cameraShake.amp = Math.max(this.cameraShake.amp, 0.05);
+      playExplosion();
+      hitBot.alive = false; // updateBots() will dispose on the next step
+      this.waveScore += 1;
+      return;
+    }
+
     const otherPlayerIndex = this.shipHandleToPlayer.get(otherHandle);
     if (otherPlayerIndex !== undefined) {
       if (otherPlayerIndex === bullet.ownerIndex) return;
@@ -1225,6 +1283,92 @@ export class Game {
   }
 
   /** Step + collide all active mines against opposing ships. */
+  /** Wave mode: step each bot's AI + spawn new bots up to the cap. Called
+   *  from fixedUpdate so spawning happens at a deterministic rate. */
+  private updateBots() {
+    // 1) Step each bot. The Ship.applyInput call also drives the thrust
+    //    audio loop — bots get the same engine sound as the player.
+    for (const bot of this.bots) {
+      if (!bot.alive) continue;
+      const input = bot.computeInput();
+      bot.ship.applyInput(input);
+      // Snapshot prev state so the renderer can interpolate this frame.
+      bot.ship.snapshot();
+    }
+
+    // 2) Reap dead bots — they were marked dead by handleCollision.
+    for (let i = this.bots.length - 1; i >= 0; i--) {
+      const b = this.bots[i];
+      if (!b.alive) {
+        this.botHandleToBot.delete(b.ship.collider.handle);
+        b.dispose(this.physics);
+        this.bots.splice(i, 1);
+      }
+    }
+
+    // 3) Spawn new bots up to a soft cap. Cap scales gently with the
+    //    player's score so the action ramps up.
+    const cap = Math.min(4, 1 + Math.floor(this.waveScore / 4));
+    if (this.bots.length < cap) {
+      this.waveSpawnTimer -= PHYS_DT;
+      if (this.waveSpawnTimer <= 0) {
+        this.spawnBot();
+        this.waveSpawnTimer = 2.5 + Math.random() * 1.5;
+      }
+    }
+  }
+
+  private spawnBot(): void {
+    const lvl = (this as unknown as { _level?: Level })._level;
+    void lvl;
+    // The Level is already loaded via loadLevel; we just need bounds and
+    // polygons. Grab them off the camera's bounds + cached polygons via
+    // the spawn helper.
+    const level = this.cachedLevelForBots();
+    if (!level) return;
+    // Pick a spawn point well inside the cave + a comfortable distance
+    // from the player so they don't appear on top of P1.
+    const p1 = this.players[0]?.ship?.body.translation();
+    const margin = 6;
+    let spawn: Point | null = null;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const b = level.bounds;
+      const x = b.minX + margin + Math.random() * (b.maxX - b.minX - margin * 2);
+      const y = b.minY + margin + Math.random() * (b.maxY - b.minY - margin * 2);
+      const p = { x, y };
+      if (!pointInPolygon(p, level.boundary)) continue;
+      let blocked = false;
+      for (const obs of level.obstacles) {
+        if (pointInPolygon(p, obs)) { blocked = true; break; }
+      }
+      if (blocked) continue;
+      if (p1) {
+        const dx = p.x - p1.x;
+        const dy = p.y - p1.y;
+        if (Math.hypot(dx, dy) < 18) continue; // too close to player
+      }
+      spawn = p;
+      break;
+    }
+    if (!spawn) return;
+    const bot = new Bot(this.physics, this.app.renderer, this.worldLayer, level, spawn);
+    this.bots.push(bot);
+    this.botHandleToBot.set(bot.ship.collider.handle, bot);
+    // Small puff on spawn so the player notices the new threat.
+    this.glow.burst(spawn.x, spawn.y, 1.0, 0xa86bff, 0.18);
+    this.particles.explode(spawn.x, spawn.y, 6, 0xa86bff, {
+      speedMin: 4, speedMax: 14, lifeMin: 0.18, lifeMax: 0.32,
+      sizeMin: 1.0, sizeMax: 1.6,
+    });
+  }
+
+  /** Cache + return the active level (Game keeps no direct reference but
+   *  the bounds + polygons can be reconstructed from minimap state — we
+   *  store the bare Level for bot use to avoid plumbing it through every
+   *  call site). */
+  private _cachedLevel: Level | null = null;
+  private cachedLevelForBots(): Level | null { return this._cachedLevel; }
+
   private updateMines() {
     for (let i = this.mines.length - 1; i >= 0; i--) {
       const m = this.mines[i];

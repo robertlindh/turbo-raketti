@@ -8,7 +8,7 @@
 // Top 10 entries per board. A new score only qualifies if either fewer
 // than 10 entries exist or it beats the worst current entry.
 
-export type GameMode = "time-trial" | "duel" | "race";
+export type GameMode = "time-trial" | "duel" | "race" | "wave";
 
 export interface HighScore {
   /** 3-letter initials. */
@@ -82,7 +82,7 @@ export function addScore(
     return { rank: 0, board: getHighScores(levelId, mode) };
   }
   const table = load();
-  table[levelId] = table[levelId] ?? { "time-trial": [], duel: [], race: [] };
+  table[levelId] = table[levelId] ?? { "time-trial": [], duel: [], race: [], wave: [] };
   const board = table[levelId][mode] ?? [];
   const fullEntry: HighScore = {
     initials: entry.initials.toUpperCase().slice(0, 3).padEnd(3, " ").trim() || "AAA",

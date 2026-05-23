@@ -46,7 +46,7 @@ export class App {
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as { mode?: GameMode; levelId?: string };
-        if (parsed.mode === "time-trial" || parsed.mode === "duel" || parsed.mode === "race") this.selectedMode = parsed.mode;
+        if (parsed.mode === "time-trial" || parsed.mode === "duel" || parsed.mode === "race" || parsed.mode === "wave") this.selectedMode = parsed.mode;
         if (parsed.levelId && LEVELS.some((l) => l.id === parsed.levelId)) {
           this.selectedLevelId = parsed.levelId;
         }
@@ -237,10 +237,14 @@ export class App {
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         const initials = (input?.value ?? "AAA").toUpperCase().slice(0, 3) || "AAA";
-        const entry =
-          result.mode === "time-trial" || result.mode === "race"
-            ? { initials, value: result.timeSeconds }
-            : { initials, value: result.winnerScore, loser: result.loserScore };
+        let entry: { initials: string; value: number; loser?: number };
+        if (result.mode === "time-trial" || result.mode === "race") {
+          entry = { initials, value: result.timeSeconds };
+        } else if (result.mode === "wave") {
+          entry = { initials, value: result.score };
+        } else {
+          entry = { initials, value: result.winnerScore, loser: result.loserScore };
+        }
         addScore(result.levelId, result.mode, entry);
         // Re-render so the new score is highlighted in the list.
         root.innerHTML = renderPostgame(result, { recorded: initials });
@@ -416,6 +420,10 @@ function renderMenu(app: App): string {
     <div class="mode-group combat-group">
       <div class="mode-group-label">⚔️ Combat · skjut motståndaren</div>
       <div class="mode-picks">
+        <button class="mode-pick combat ${mode === "wave" ? "active" : ""}" data-mode="wave">
+          <strong>Skjut bottar</strong>
+          <span>1 spelare · score attack</span>
+        </button>
         <button class="mode-pick combat ${mode === "duel" ? "active" : ""}" data-mode="duel">
           <strong>Duell</strong>
           <span>2 spelare · first to ${5} frags</span>
@@ -480,7 +488,11 @@ function renderPostgame(
   let detail: string;
   let value: number;
 
-  if (result.mode === "time-trial") {
+  if (result.mode === "wave") {
+    title = "Combat över!";
+    detail = `Bottar nedskjutna: <strong>${result.score}</strong> · överlevde ${formatTime(result.survivedSeconds)}`;
+    value = result.score;
+  } else if (result.mode === "time-trial") {
     title = "Race avslutat";
     detail = `Tid: <strong>${formatTime(result.timeSeconds)}</strong>`;
     value = result.timeSeconds;
@@ -537,12 +549,16 @@ function renderPostgame(
 
 function formatScoreValue(mode: GameMode, s: HighScore): string {
   if (mode === "time-trial" || mode === "race") return formatTime(s.value);
+  // Wave: just the kill count.
+  if (mode === "wave") return String(s.value);
+  // Duel: "wins–losses" format if both sides are recorded.
   return s.loser !== undefined ? `${s.value}–${s.loser}` : String(s.value);
 }
 
 function modeLabel(mode: GameMode): string {
   return mode === "time-trial" ? "Time Trial"
        : mode === "race"       ? "Race 2P"
+       : mode === "wave"       ? "Skjut bottar"
        :                         "Duell";
 }
 
