@@ -11,6 +11,7 @@ import type { GameResult, GameMode } from "../game/Game";
 import { LEVELS } from "../level/levels";
 import { logEvent } from "./firebase";
 import { hasTouch as hasTouchDevice } from "../game/Input";
+import { BUILD_NUMBER, BUILD_SHA } from "./version";
 import {
   createRoom, joinRoom, subscribeToRoom, setReady, leaveRoom,
   setRoomStatusPlaying,
@@ -762,6 +763,7 @@ function renderMenu(app: App): string {
     <div class="screen menu-screen">
       <div class="menu-header">
         <h1>TurboRaketti</h1>
+        <p class="version">build ${escapeHtml(BUILD_NUMBER)} · ${escapeHtml(BUILD_SHA)}</p>
       </div>
 
       <div class="menu-body">

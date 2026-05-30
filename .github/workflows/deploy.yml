@@ -37,6 +37,12 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          # Auto-incrementing per workflow run, surfaced in the menu as
+          # "build N". Pair it with the commit SHA so we can trace which
+          # build a player was on when they hit a bug.
+          VITE_BUILD_NUMBER: ${{ github.run_number }}
+          VITE_BUILD_SHA: ${{ github.sha }}
         run: npm run build
 
       - name: Upload Pages artifact
