@@ -263,7 +263,8 @@ export class Ship {
 
   snapshot() {
     const p = this.body.translation();
-    return { x: p.x, y: p.y, r: this.body.rotation() };
+    const v = this.body.linvel();
+    return { x: p.x, y: p.y, r: this.body.rotation(), vx: v.x, vy: v.y };
   }
 
   dispose(physics: PhysicsWorld) {

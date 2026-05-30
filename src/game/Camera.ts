@@ -63,7 +63,10 @@ export class Camera {
     return Math.min(vp.width / spanX, vp.height / spanY);
   }
 
-  follow(targets: Array<{ x: number; y: number }>, alpha = 0.18) {
+  follow(
+    targets: Array<{ x: number; y: number; vx?: number; vy?: number }>,
+    alpha = 0.18,
+  ) {
     if (targets.length === 0) return;
     let cx = 0;
     let cy = 0;
@@ -95,10 +98,23 @@ export class Camera {
       // see the whole course and uses the minimap for next-gate cues.
       targetZoom = this.fitZoom() * 1.0;
     } else {
-      // Single target on screen (e.g. opponent died mid-duel). Pull back
-      // 20% further than the duo close-in zoom so the lone pilot sees
-      // more of the cave around them and doesn't feel hemmed in.
-      targetZoom = this.maxZoom * 0.7 * 0.8;
+      // Single target on screen — speed-adaptive zoom. At rest the camera
+      // sits a touch closer than the old static value so the cave feels
+      // more intimate; as the ship picks up speed we pull back so the
+      // pilot can see what's coming at them. Mapped over [0, SPEED_FULL]
+      // m/s with a smoothstep curve so the zoom doesn't twitch on every
+      // small velocity change.
+      const baseZoom = this.maxZoom * 0.7 * 0.8; // ~33.6 — the old value
+      const v = targets[0]!;
+      const speed = Math.hypot(v.vx ?? 0, v.vy ?? 0);
+      const SPEED_FULL = 22; // m/s — typical max in-flight cruise speed
+      const tRaw = Math.min(1, speed / SPEED_FULL);
+      const t = tRaw * tRaw * (3 - 2 * tRaw); // smoothstep
+      // 1.18 at rest (slightly more zoomed in) → 0.72 at full speed (zoom out)
+      const ZOOM_REST = 1.18;
+      const ZOOM_FAST = 0.72;
+      const speedMultiplier = ZOOM_REST + (ZOOM_FAST - ZOOM_REST) * t;
+      targetZoom = baseZoom * speedMultiplier;
     }
 
     // Apply the user's preferred zoom multiplier from settings.
