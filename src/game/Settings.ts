@@ -97,8 +97,8 @@ export const SETTINGS: GameSettings = {
   masterVolume: 0.6,
 
   powerupsEnabled: 1,
-  powerupSpawnSec: 7,
-  powerupsMax: 3,
+  powerupSpawnSec: 4,
+  powerupsMax: 4,
 
   crtEnabled: 0,
   // On by default — a short, subtle trail behind every bullet adds motion
