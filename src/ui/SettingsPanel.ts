@@ -264,14 +264,9 @@ export class SettingsPanel {
     };
     launcher.onclick = () => this.toggleOpen();
     document.body.appendChild(launcher);
-    this.launcher = launcher;
 
     window.addEventListener("keydown", this.onKey);
   }
-
-  /** Visible launcher button — removed alongside the panel when the game
-   *  disposes so it doesn't pollute the menu. */
-  private launcher: HTMLElement | null = null;
 
   private onKey = (e: KeyboardEvent) => {
     // Ctrl+Shift+S (or Cmd+Shift+S) — toggle the hidden panel.
