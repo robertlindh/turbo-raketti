@@ -27,12 +27,12 @@ export interface PowerUpDef {
 }
 
 export const POWERUP_DEFS: Record<PowerUpType, PowerUpDef> = {
-  shield:   { type: "shield",   durationSec: 5, color: 0x6cd0ff, glyph: "S", label: "Shield",   ammo: false },
+  shield:   { type: "shield",   durationSec: 8, color: 0x6cd0ff, glyph: "S", label: "Shield",   ammo: false },
   triple:   { type: "triple",   durationSec: 8, color: 0xff8030, glyph: "T", label: "Triple",   ammo: false },
   rapid:    { type: "rapid",    durationSec: 8, color: 0xffd040, glyph: "R", label: "Rapid",    ammo: false },
-  speed:    { type: "speed",    durationSec: 5, color: 0x6cff80, glyph: "V", label: "Speed",    ammo: false },
+  speed:    { type: "speed",    durationSec: 8, color: 0x6cff80, glyph: "V", label: "Speed",    ammo: false },
   cloak:    { type: "cloak",    durationSec: 4, color: 0xa078ff, glyph: "C", label: "Cloak",    ammo: false },
-  antigrav: { type: "antigrav", durationSec: 5, color: 0xff6cd0, glyph: "G", label: "AntiGrav", ammo: false },
+  antigrav: { type: "antigrav", durationSec: 8, color: 0xff6cd0, glyph: "G", label: "AntiGrav", ammo: false },
   mine:     { type: "mine",     durationSec: 0, color: 0xff4848, glyph: "M", label: "Mine",     ammo: true  },
   homing:   { type: "homing",   durationSec: 0, color: 0xff8030, glyph: "H", label: "Homing",   ammo: true  },
 };

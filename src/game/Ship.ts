@@ -27,6 +27,17 @@ export class Ship {
   private shieldRing: Graphics;
   private shieldActive = false;
   private shieldPhase = 0;
+  /** Generic powerup aura — a brightly-coloured ring drawn behind the
+   *  ship so the player can see at a glance that some passive (Triple,
+   *  Rapid, Speed, AntiGrav, …) is currently active. Distinct from the
+   *  dedicated shield bubble; coexists with it. */
+  private powerUpAura: Graphics;
+  private powerUpActive = false;
+  private powerUpColor = 0xffffff;
+  private powerUpPhase = 0;
+  /** Eases from 1 → 0 over ~16 frames after pickup, briefly boosting
+   *  the aura's alpha + scale so the moment is unmistakable. */
+  private powerUpFlash = 0;
   /** True while thrust was applied in the most recent applyInput(). */
   thrustOn = false;
   /** Multipliers on the global thrust + max-speed settings, allowing
@@ -61,6 +72,13 @@ export class Ship {
     this.view = new Container();
     this.view.label = "ship";
     this.view.scale.set(SHIP_SPRITE_METRES_PER_PX, SHIP_SPRITE_METRES_PER_PX);
+
+    // Generic powerup aura (drawn BEHIND the shield ring + flame + hull).
+    // Painted blank here and redrawn each time setPowerUpAura() switches
+    // colour. Counter-rotates in sync() so the disc stays world-aligned.
+    this.powerUpAura = new Graphics();
+    this.powerUpAura.visible = false;
+    this.view.addChild(this.powerUpAura);
 
     // Shield aura (drawn first, behind everything). Activated externally via
     // setShieldActive(); pulses in sync().
@@ -187,11 +205,50 @@ export class Ship {
       // Counter-rotate so the bubble doesn't spin with the ship.
       this.shieldRing.rotation = -this.view.rotation;
     }
+
+    // Generic powerup aura — pulse + brief flash on pickup so the
+    // player notices the moment their ship lights up.
+    this.powerUpAura.visible = this.powerUpActive;
+    if (this.powerUpActive) {
+      this.powerUpPhase += 0.22;
+      // Decay any active pickup flash toward 0 each frame.
+      if (this.powerUpFlash > 0) this.powerUpFlash = Math.max(0, this.powerUpFlash - 0.06);
+      const breath = 0.55 + Math.sin(this.powerUpPhase) * 0.30;
+      const scale = 1 + Math.sin(this.powerUpPhase * 1.1) * 0.08;
+      // Flash boosts both alpha and scale right after pickup.
+      const flashBoost = this.powerUpFlash;
+      this.powerUpAura.alpha = Math.min(1, breath + flashBoost * 0.6);
+      this.powerUpAura.scale.set(scale + flashBoost * 0.5, scale + flashBoost * 0.5);
+      this.powerUpAura.rotation = -this.view.rotation;
+    }
   }
 
   /** Called from Game when the shield power-up is active for this player. */
   setShieldActive(on: boolean) {
     this.shieldActive = on;
+  }
+
+  /** Called from Game each tick with the colour of the most-recently
+   *  picked-up passive powerup (Triple/Rapid/Speed/AntiGrav). Off when
+   *  no such passive is active. Repainted on every colour change so the
+   *  aura always matches the currently dominant effect. */
+  setPowerUpAura(on: boolean, color: number) {
+    if (on && (!this.powerUpActive || color !== this.powerUpColor)) {
+      // Re-draw the ring in the new colour. Three layers — outer soft
+      // halo, mid ring, inner crisp edge — so it reads from across the
+      // cave but doesn't drown the hull.
+      const r = 13;
+      const g = this.powerUpAura;
+      g.clear();
+      g.circle(0, 0, r * 1.35).fill({ color, alpha: 0.10 });
+      g.circle(0, 0, r * 1.15).fill({ color, alpha: 0.18 });
+      g.circle(0, 0, r).stroke({ color, width: 0.9, alpha: 0.95 });
+      g.circle(0, 0, r * 0.85).stroke({ color: 0xffffff, width: 0.3, alpha: 0.5 });
+      this.powerUpColor = color;
+      // Pop the flash whenever the aura turns on or the colour swaps.
+      this.powerUpFlash = 1;
+    }
+    this.powerUpActive = on;
   }
 
   /** World-space position of the rear of the ship (engine nozzle). */

@@ -4,6 +4,12 @@ import { Ship, SHIP_RADIUS } from "./Ship";
 import { Bullet } from "./Bullet";
 import { HomingMissile } from "./HomingMissile";
 import { Bot } from "./Bot";
+import {
+  publishState, subscribeToRoom, leaveRoom,
+  type RemoteShipState,
+} from "../app/multiplayer";
+import { Sprite } from "pixi.js";
+import { makeShipTexture } from "../render/sprites";
 import { Camera } from "./Camera";
 import {
   KeyboardInput, GamepadInput, TouchInput, orInputs, hasTouch,
@@ -14,7 +20,7 @@ import { loadLevel } from "../level/LevelLoader";
 import { getLevelById } from "../level/levels";
 import { getHighScores, formatTime } from "../app/highscores";
 import type { Level } from "../level/Level";
-import { SETTINGS, onSettingChange } from "./Settings";
+import { SETTINGS, onSettingChange, offSettingChange } from "./Settings";
 import { SettingsPanel } from "../ui/SettingsPanel";
 import {
   unlockAudio, startVolumeWatcher,
@@ -46,6 +52,10 @@ export interface GameConfig {
   level?: Level;
   /** Fired when the match ends — exits to the app's postgame screen. */
   onGameEnd?: (result: GameResult) => void;
+  /** Online multiplayer room (race-only for now). When set, the game
+   *  publishes our ship state to Firebase ~15Hz and renders the remote
+   *  player's ship as a ghost interpolated from their published state. */
+  online?: { roomId: string; role: "host" | "guest" };
 }
 
 /** Ghost-race telemetry the Game ships back with a finished result so the
@@ -212,6 +222,31 @@ export class Game {
   private replaySamples: Array<{ t: number; x: number; y: number; r: number }> = [];
   /** Seconds since the last replay sample was pushed. */
   private replayAccum = 0;
+
+  /** Online state — populated only when config.online is set. */
+  private remoteShip: Sprite | null = null;
+  /** Latest snapshot received from Firebase. Treated as immutable ground
+   *  truth; render-time extrapolation lives separately on `remoteRender`. */
+  private remoteState: RemoteShipState | null = null;
+  /** Seconds since `remoteState` was received. Used to cap extrapolation
+   *  so the ghost ship doesn't fly off to infinity when updates stop. */
+  private remoteStateAge = 0;
+  private remoteUnsubscribe?: () => void;
+  private onlinePublishAccum = 0;
+  /** True while a publishState() write is still in flight. Prevents
+   *  Firebase writes from piling up if the network stalls — we drop
+   *  the new snapshot instead of queueing another async set(). */
+  private publishInFlight = false;
+  /** True once dispose() has run. Guards async callbacks (Firebase
+   *  subscribe resolution, queued microtasks) that can fire after the
+   *  Game's Pixi/physics state has been torn down. */
+  private disposed = false;
+  /** Settings listeners we registered in init(). Removed in dispose so
+   *  slider drags after teardown don't reach into freed RAPIER bodies. */
+  private settingsListeners: Array<(key: string, value: number) => void> = [];
+  /** Window resize listeners we registered. Removed in dispose so we
+   *  don't call renderer.resize() on a destroyed renderer. */
+  private resizeListeners: Array<() => void> = [];
   private shipHandleToPlayer = new Map<number, number>();
   private accumulator = 0;
   private lastTime = 0;
@@ -267,9 +302,11 @@ export class Game {
 
     // Resize on window changes — explicitly tell Pixi the new pixel size.
     const onResize = () => {
+      if (this.disposed) return;
       this.app.renderer.resize(window.innerWidth, window.innerHeight);
     };
     window.addEventListener("resize", onResize);
+    this.resizeListeners.push(onResize);
     // Run once after layout in case the initial measurement was wrong.
     requestAnimationFrame(onResize);
 
@@ -303,7 +340,8 @@ export class Game {
 
     // Live-update gravity when the slider moves. Other settings are read
     // every frame so they don't need explicit hooks.
-    onSettingChange((key, value) => {
+    const physicsListener = (key: string, value: number) => {
+      if (this.disposed) return;
       if (key === "gravity") {
         this.physics.world.gravity = { x: 0, y: value };
       }
@@ -314,7 +352,9 @@ export class Game {
           else p.ship.body.setAngularDamping(value);
         }
       }
-    });
+    };
+    onSettingChange(physicsListener);
+    this.settingsListeners.push(physicsListener);
 
     const renderer = this.app.renderer;
 
@@ -381,9 +421,12 @@ export class Game {
     // CRT overlay — togglable via settings.
     this.crt = new CrtOverlay();
     this.crt.setEnabled(SETTINGS.crtEnabled > 0.5);
-    onSettingChange((key, value) => {
+    const crtListener = (key: string, value: number) => {
+      if (this.disposed) return;
       if (key === "crtEnabled") this.crt.setEnabled(value > 0.5);
-    });
+    };
+    onSettingChange(crtListener);
+    this.settingsListeners.push(crtListener);
 
     // Splitscreen — two RTs + display sprites attached to the stage at top
     // level (above the parallax stars but rendered in their own pass).
@@ -394,11 +437,14 @@ export class Game {
     this.app.stage.addChild(this.splitscreen.root);
 
     // Recreate split-screen render textures when the window resizes.
-    window.addEventListener("resize", () => {
+    const onResizeSplit = () => {
+      if (this.disposed) return;
       const cv2 = this.app.canvas;
       this.splitscreen.resize(cv2.clientWidth || window.innerWidth,
                               cv2.clientHeight || window.innerHeight);
-    });
+    };
+    window.addEventListener("resize", onResizeSplit);
+    this.resizeListeners.push(onResizeSplit);
 
     // Minimap — shows the whole arena, players, power-ups and mines.
     this.minimap = new Minimap();
@@ -426,6 +472,7 @@ export class Game {
         || this.config.mode === "wave") {
       this.buildRaceHud();
     }
+    if (this.config.online) this.setupOnline();
     new SettingsPanel();
     this.input.attach();
     this.gamepads.attach();
@@ -751,11 +798,117 @@ export class Game {
     }
   }
 
+  /** Set up the online multiplayer subscription. Spawns a ghost ship for
+   *  the remote player and starts listening for their state updates. */
+  private setupOnline(): void {
+    const online = this.config.online;
+    if (!online) return;
+    // Spawn the remote ghost sprite. Use the opposing player's colour so
+    // the host (blue P1) sees the guest as red, and vice versa.
+    const remoteColor = online.role === "host" ? 0xff7a7a : 0x6cc0ff;
+    const texture = makeShipTexture(this.app.renderer, remoteColor);
+    this.remoteShip = new Sprite(texture);
+    this.remoteShip.anchor.set(0.5, 0.5);
+    this.remoteShip.scale.set(2 / 13);
+    this.remoteShip.alpha = 0.75; // slightly translucent so it reads as a remote ghost
+    this.remoteShip.visible = false; // hidden until first state arrives
+    this.worldLayer.addChild(this.remoteShip);
+
+    // Subscribe to room updates so we can pull the remote player's state.
+    // `disposed` guard inside the callback covers two races:
+    //   1. dispose() runs before subscribe() resolves — when the promise
+    //      lands we'd otherwise have a live Firebase listener pointed at a
+    //      destroyed Game. We unsubscribe immediately in that case.
+    //   2. A snapshot arrives between dispose() and the unsubscribe taking
+    //      effect — the guard drops it instead of touching remoteShip.
+    const otherRole = online.role === "host" ? "guest" : "host";
+    void subscribeToRoom(online.roomId, (snap) => {
+      if (this.disposed) return;
+      if (!snap) return;
+      const slot = otherRole === "host" ? snap.host : snap.guest;
+      if (slot?.state) {
+        this.remoteState = slot.state;
+        this.remoteStateAge = 0;
+        if (this.remoteShip) this.remoteShip.visible = true;
+      }
+    }).then((unsub) => {
+      if (this.disposed) { unsub(); return; }
+      this.remoteUnsubscribe = unsub;
+    });
+  }
+
+  /** Push our ship state to Firebase at ~15Hz (every 66ms). Called from
+   *  the render loop when online. If a previous write is still pending
+   *  we skip — fresh state will go out on the next free tick. Without
+   *  this guard a slow network would accumulate unresolved promises and
+   *  eventually stall the tab. */
+  private publishLocalStateIfNeeded(dt: number): void {
+    const online = this.config.online;
+    if (!online) return;
+    const p1 = this.players[0];
+    if (!p1?.ship) return;
+    this.onlinePublishAccum += dt;
+    if (this.onlinePublishAccum < 0.066) return;
+    this.onlinePublishAccum = 0;
+    if (this.publishInFlight) return; // backpressure: drop, not queue
+    const pos = p1.ship.body.translation();
+    const rot = p1.ship.body.rotation();
+    const vel = p1.ship.body.linvel();
+    this.publishInFlight = true;
+    publishState(online.roomId, online.role, {
+      x: pos.x, y: pos.y, r: rot,
+      vx: vel.x, vy: vel.y,
+      thrust: p1.ship.thrustOn,
+      t: this.matchElapsed,
+    }).finally(() => { this.publishInFlight = false; });
+  }
+
+  /** Update the visible position of the remote ghost ship. Extrapolates
+   *  from the last received snapshot — `remoteState` is treated as
+   *  immutable ground truth, with `remoteStateAge` tracking how long
+   *  we've been extrapolating. Capping the age stops the ghost from
+   *  flying off to infinity when Firebase updates stop. */
+  private updateRemoteGhost(dt: number): void {
+    if (!this.remoteShip || !this.remoteState) return;
+    this.remoteStateAge += dt;
+    // Cap extrapolation at 0.5s — beyond that we'd be predicting wildly
+    // without any real signal. Hold the last predicted position instead.
+    const t = Math.min(0.5, this.remoteStateAge);
+    this.remoteShip.x = this.remoteState.x + this.remoteState.vx * t;
+    this.remoteShip.y = this.remoteState.y + this.remoteState.vy * t;
+    this.remoteShip.rotation = this.remoteState.r + Math.PI / 2;
+  }
+
   /** Tear down the Pixi canvas + all DOM the game added (scoreboard, settings
    *  panel, etc.) so the menu can render a clean slate. Safe to call twice. */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    // Unsubscribe + leave the online room before tearing down Pixi. The
+    // unsubscribe may still be undefined if the subscribe() promise hasn't
+    // resolved yet — the `disposed` guard inside the subscribe callback
+    // handles that race.
+    this.remoteUnsubscribe?.();
+    this.remoteUnsubscribe = undefined;
+    if (this.config.online) {
+      void leaveRoom(this.config.online.roomId, this.config.online.role);
+    }
     this.stop();
+    // Settings + resize listeners — remove BEFORE we destroy the renderer /
+    // physics world, otherwise a stray resize or slider drag during teardown
+    // would hit freed objects.
+    for (const fn of this.settingsListeners) offSettingChange(fn);
+    this.settingsListeners.length = 0;
+    for (const fn of this.resizeListeners) window.removeEventListener("resize", fn);
+    this.resizeListeners.length = 0;
+    // Free the Rapier wasm world — every collider/body the level created
+    // lives here, and without an explicit free() it stays on the wasm heap
+    // for the rest of the page session.
+    try { this.physics?.free(); } catch { /* ignore */ }
     // Pixi app removal — destroys the canvas + GL context.
+    // NB: { texture: true } destroys textures owned by sprites, which can
+    // include the module-cached ship/bullet/missile/glow textures. Those
+    // caches check `.destroyed` and re-create lazily on the next match.
     try { this.app.destroy(true, { children: true, texture: true }); } catch { /* ignore */ }
     // DOM cruft that Game appends to <body>.
     for (const id of ["scoreboard", "settings-panel", "race-hud", "countdown", "touch-controls"]) {
@@ -789,6 +942,9 @@ export class Game {
     }
     const alpha = this.accumulator / PHYS_DT;
     this.render(alpha, dt);
+    // Online: push our state + animate the remote ghost.
+    this.publishLocalStateIfNeeded(dt);
+    this.updateRemoteGhost(dt);
     this.updateScoreboard();
     this.updateMinimap(dt);
     this.checkWinCondition();
@@ -989,16 +1145,36 @@ export class Game {
             // Passive timer: (re-)set duration in the active power-ups map.
             p.activePowerUps.set(picked, def.durationSec);
           }
-          this.glow.burst(pos.x, pos.y, 1.6, def.color, 0.25);
-          this.particles.explode(pos.x, pos.y, 10, def.color, {
-            speedMin: 6, speedMax: 22, lifeMin: 0.2, lifeMax: 0.4,
-            sizeMin: 1.0, sizeMax: 1.8,
+          // Much bigger feedback burst than before — the user couldn't
+          // tell pickups were happening at the old volume. ~3× the glow
+          // radius and 28 particles (was 10) with longer lifetimes so
+          // the moment reads even mid-thrust.
+          this.glow.burst(pos.x, pos.y, 3.2, def.color, 0.55);
+          this.particles.explode(pos.x, pos.y, 28, def.color, {
+            speedMin: 8, speedMax: 34, lifeMin: 0.3, lifeMax: 0.75,
+            sizeMin: 1.4, sizeMax: 2.4,
           });
           playSpawn();
         }
       }
       // Shield visual follows the active power-up state.
       ship.setShieldActive(p.activePowerUps.has("shield"));
+
+      // Generic powerup aura — coloured ring around the ship for any
+      // non-shield/non-cloak passive that's currently active. Iterating
+      // the Map preserves insertion order, so the latest pickup wins
+      // when multiple are stacked.
+      let auraOn = false;
+      let auraColor = 0xffffff;
+      for (const [type] of p.activePowerUps) {
+        if (type === "shield" || type === "cloak") continue;
+        const def2 = POWERUP_DEFS[type];
+        if (def2 && !def2.ammo) {
+          auraOn = true;
+          auraColor = def2.color;
+        }
+      }
+      ship.setPowerUpAura(auraOn, auraColor);
 
       // Cloak — ship goes mostly transparent while active.
       ship.view.alpha = p.activePowerUps.has("cloak") ? 0.25 : 1.0;

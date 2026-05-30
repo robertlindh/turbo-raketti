@@ -24,8 +24,14 @@ const THRUST_TOLERANCE = 0.45; // radians (≈26°)
 
 export class Bot {
   readonly ship: Ship;
-  /** True while the underlying ship still exists. Set to false on death. */
+  /** True while the bot should still participate in gameplay. Flipped to
+   *  false when a bullet kills it — the reap loop then calls dispose. */
   alive = true;
+  /** Separate from `alive` so dispose() is idempotent regardless of which
+   *  state machine flipped the bot's gameplay status first. Without this
+   *  we used to early-return when alive was already false, leaking the
+   *  ship's physics body + Pixi sprite on every wave-mode kill. */
+  private disposed = false;
 
   private target: Point;
   private boundary: Point[];
@@ -124,7 +130,8 @@ export class Bot {
   }
 
   dispose(physics: PhysicsWorld): void {
-    if (!this.alive) return;
+    if (this.disposed) return;
+    this.disposed = true;
     this.alive = false;
     this.ship.dispose(physics);
   }

@@ -382,20 +382,21 @@
 
 
       /* --- Menu --- */
+      .menu-header {
+        text-align: center;
+        margin-bottom: 24px;
+      }
       .menu-header h1 {
         margin: 0;
-        font-size: 38px;
-        letter-spacing: 4px;
+        font-size: 42px;
+        letter-spacing: 6px;
         color: #ffd166;
         text-shadow: 0 4px 0 #0a0414, 0 0 18px rgba(255,180,90,0.4);
       }
-      .menu-header .tagline {
-        color: #aef0ff;
-        letter-spacing: 0.3em;
-        font-size: 12px;
-        margin: 4px 0 28px;
-        text-transform: uppercase;
-        opacity: 0.7;
+      .menu-body {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
       }
       #screens h2 {
         font-size: 11px;
@@ -405,55 +406,39 @@
         margin: 18px 0 10px;
         opacity: 0.8;
       }
-      .mode-picks, .level-picks {
-        display: grid;
-        gap: 10px;
-      }
       .mode-picks {
-        grid-template-columns: 1fr 1fr;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
       }
       .level-picks {
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      }
-      /* Mode groups — race vs combat are visually separated by a left
-         border tinted to their group palette. */
-      .mode-group {
-        margin-bottom: 14px;
-        padding-left: 12px;
-        border-left: 3px solid transparent;
-      }
-      .mode-group.race-group {
-        border-left-color: #aef0ff;
-      }
-      .mode-group.combat-group {
-        border-left-color: #ff6b6b;
-      }
-      .mode-group-label {
-        font-size: 11px;
-        letter-spacing: 0.22em;
-        text-transform: uppercase;
-        color: rgba(222, 196, 255, 0.7);
-        margin: 0 0 6px;
-        font-weight: 600;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 8px;
       }
       .mode-pick, .level-pick {
         background: rgba(20, 10, 32, 0.7);
         border: 1px solid rgba(120, 80, 180, 0.35);
         color: #dec4ff;
-        padding: 14px 16px;
-        text-align: left;
+        padding: 10px 12px;
+        text-align: center;
         border-radius: 6px;
         cursor: pointer;
         font: inherit;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        transition: background .12s, border-color .12s, transform .08s,
-                    box-shadow .12s;
+        font-size: 13px;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+        transition: background .12s, border-color .12s, box-shadow .12s;
       }
       .mode-pick:hover, .level-pick:hover {
         background: rgba(40, 24, 64, 0.85);
         border-color: rgba(174, 240, 255, 0.5);
+      }
+      .mode-pick.race {
+        border-left: 3px solid rgba(174, 240, 255, 0.55);
+      }
+      .mode-pick.combat {
+        border-left: 3px solid rgba(255, 138, 138, 0.55);
       }
       .mode-pick.active, .level-pick.active {
         background: linear-gradient(135deg, rgba(80, 40, 130, 0.85), rgba(40, 80, 130, 0.85));
@@ -471,15 +456,41 @@
         border-color: #ff8a8a;
         box-shadow: 0 0 0 1px #ff8a8a inset, 0 0 18px rgba(255,107,107,0.3);
       }
-      .mode-pick strong { font-size: 16px; letter-spacing: 0.12em; }
-      .mode-pick span { font-size: 11px; opacity: 0.7; letter-spacing: 0.1em; }
-      .level-pick-name { font-weight: 700; letter-spacing: 0.12em; font-size: 13px; }
-      .level-pick-sub { font-size: 10px; opacity: 0.65; letter-spacing: 0.1em; }
+
+      /* Compact icon row — secondary actions live here so only START
+         draws attention as the primary CTA. */
+      .icon-row {
+        display: flex;
+        gap: 8px;
+      }
+      #screens .icon-btn {
+        background: rgba(20, 10, 32, 0.7);
+        border: 1px solid rgba(120, 80, 180, 0.35);
+        color: #dec4ff;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        transition: background .12s, border-color .12s, transform .08s;
+      }
+      #screens .icon-btn:hover {
+        background: rgba(40, 24, 64, 0.85);
+        border-color: rgba(174, 240, 255, 0.5);
+        transform: translateY(-1px);
+      }
 
       /* Gamepad / keyboard focus — a bright gold outline so the currently
          selected button is unmistakable when nav'ing without the mouse. */
       #screens button:focus-visible,
       #screens .link-btn:focus-visible,
+      #screens .icon-btn:focus-visible,
       #screens .mode-pick:focus-visible,
       #screens .level-pick:focus-visible {
         outline: none;
@@ -624,13 +635,21 @@
         margin-top: 24px;
       }
 
-      /* --- Instructions --- */
-      .instructions-screen h1 {
+      /* --- Instructions / Highscores --- */
+      .instructions-screen h1,
+      .highscores-screen h1 {
         font-size: 28px;
         letter-spacing: 0.16em;
         color: #ffd166;
         margin: 0 0 18px;
         text-shadow: 0 4px 0 #0a0414, 0 0 24px rgba(255,180,90,0.4);
+      }
+      .highscores-screen .mode-picks,
+      .highscores-screen .level-picks {
+        margin-bottom: 14px;
+      }
+      .highscores-screen h2 {
+        margin-top: 24px;
       }
       .instructions-screen section {
         margin-bottom: 22px;
@@ -714,6 +733,63 @@
         border-radius: 50%;
         box-shadow: 0 0 0 1px rgba(255,255,255,0.4) inset;
         flex: 0 0 12px;
+      }
+
+      /* --- Lobby (online multiplayer) --- */
+      .lobby-screen h1 {
+        font-size: 30px;
+        letter-spacing: 0.18em;
+        color: #ffd166;
+        margin: 0 0 12px;
+        text-shadow: 0 4px 0 #0a0414, 0 0 24px rgba(255,180,90,0.4);
+      }
+      .lobby-screen section {
+        margin-bottom: 18px;
+      }
+      .lobby-screen input[type="text"] {
+        background: #0d0f15;
+        border: 1px solid rgba(174, 240, 255, 0.45);
+        color: #ffffff;
+        font: inherit;
+        font-size: 14px;
+        padding: 8px 12px;
+        border-radius: 4px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .players-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .players-list li {
+        background: rgba(10, 4, 20, 0.55);
+        border: 1px solid rgba(120, 80, 180, 0.3);
+        border-radius: 5px;
+        padding: 10px 14px;
+        margin-bottom: 6px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        font-size: 14px;
+      }
+      .players-list li.ready {
+        border-color: rgba(94, 216, 132, 0.7);
+        background: rgba(20, 50, 30, 0.4);
+      }
+      .players-list .role {
+        color: rgba(222, 196, 255, 0.6);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+      }
+      .players-list .status {
+        margin-left: auto;
+        font-size: 11px;
+        letter-spacing: 0.2em;
+        color: rgba(222, 196, 255, 0.7);
+      }
+      .players-list li.ready .status {
+        color: #5ed884;
       }
     </style>
   </head>

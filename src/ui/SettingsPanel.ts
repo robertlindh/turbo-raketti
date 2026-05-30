@@ -96,47 +96,57 @@ export class SettingsPanel {
   private toastTimer: number | null = null;
 
   constructor() {
+    // Hidden mode — no visible launcher. The root is a full-screen backdrop
+    // overlay that is `display: none` until the secret combo is pressed.
+    // Win+S can't be captured by the browser (Windows Search swallows it),
+    // so Ctrl+Shift+S is the closest "Win+S-like" combo we can actually bind.
     this.root = document.createElement("div");
     this.root.id = "settings-panel";
     this.root.style.cssText = `
       position: fixed;
-      top: 12px;
-      right: 220px;
-      z-index: 100;
+      inset: 0;
+      z-index: 9999;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 60px;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(2px);
       font-family: system-ui, -apple-system, sans-serif;
       color: #ddd;
       user-select: none;
     `;
-
-    const toggle = document.createElement("button");
-    toggle.textContent = "⚙ Settings";
-    toggle.style.cssText = `
-      background: rgba(0,0,0,0.6);
-      border: 1px solid #3a3a48;
-      color: #ddd;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      cursor: pointer;
-      letter-spacing: 0.5px;
-    `;
-    toggle.onclick = () => this.toggleOpen();
-    this.root.appendChild(toggle);
+    this.root.addEventListener("click", (e) => {
+      if (e.target === this.root) this.close();
+    });
 
     this.body = document.createElement("div");
     this.body.style.cssText = `
-      display: none;
-      margin-top: 8px;
-      background: rgba(10, 10, 18, 0.94);
+      background: rgba(10, 10, 18, 0.97);
       border: 1px solid #25252e;
       border-radius: 8px;
       padding: 16px;
-      width: 320px;
-      max-height: 70vh;
+      width: 360px;
+      max-height: 80vh;
       overflow-y: auto;
       font-size: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
     `;
     this.root.appendChild(this.body);
+
+    const header = document.createElement("div");
+    header.style.cssText =
+      "display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;";
+    const title = document.createElement("div");
+    title.textContent = "⚙ Hidden Settings";
+    title.style.cssText =
+      "font-weight: 700; font-size: 14px; color: #6cc0ff; letter-spacing: 0.5px;";
+    const hint = document.createElement("div");
+    hint.textContent = "Ctrl+Shift+S · Esc to close";
+    hint.style.cssText = "font-size: 10px; color: #666;";
+    header.appendChild(title);
+    header.appendChild(hint);
+    this.body.appendChild(header);
 
     this.buildSections();
 
@@ -216,11 +226,35 @@ export class SettingsPanel {
     document.body.appendChild(this.toast);
 
     document.body.appendChild(this.root);
+
+    window.addEventListener("keydown", this.onKey);
   }
 
+  private onKey = (e: KeyboardEvent) => {
+    // Ctrl+Shift+S (or Cmd+Shift+S) — toggle the hidden panel.
+    if (e.code === "KeyS" && e.shiftKey && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      this.toggleOpen();
+      return;
+    }
+    if (e.code === "Escape" && this.open) {
+      e.preventDefault();
+      this.close();
+    }
+  };
+
   private toggleOpen() {
-    this.open = !this.open;
-    this.body.style.display = this.open ? "block" : "none";
+    this.open ? this.close() : this.openPanel();
+  }
+
+  private openPanel() {
+    this.open = true;
+    this.root.style.display = "flex";
+  }
+
+  private close() {
+    this.open = false;
+    this.root.style.display = "none";
   }
 
   private buildSections() {

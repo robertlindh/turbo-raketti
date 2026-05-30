@@ -70,6 +70,12 @@ interface Chunk {
   maxLife: number;
 }
 
+/** Mirror of MAX_DECALS — keep visible wreckage bounded so a flurry of
+ *  kills + checkpoint hits doesn't pile up hundreds of Graphics objects.
+ *  When the cap is exceeded we evict the oldest chunk, same pattern the
+ *  DecalLayer uses. */
+const MAX_WRECKAGE = 120;
+
 export class WreckageLayer extends Container {
   private chunks: Chunk[] = [];
 
@@ -102,6 +108,12 @@ export class WreckageLayer extends Container {
         life,
         maxLife: life,
       });
+      // Evict the oldest chunk if we blew past the cap. Matches the
+      // DecalLayer policy so both layers behave consistently.
+      if (this.chunks.length > MAX_WRECKAGE) {
+        const old = this.chunks.shift()!;
+        old.view.destroy();
+      }
     }
   }
 

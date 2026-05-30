@@ -125,6 +125,16 @@ export function onSettingChange(fn: Listener): void {
   listeners.push(fn);
 }
 
+/** Remove a previously-registered listener. Important because Game adds
+ *  listeners during init() but used not to remove them on dispose, leaking
+ *  closures over dead RAPIER bodies. Old listeners would then call
+ *  setLinearDamping on freed wasm objects when the user dragged a slider
+ *  in the next match, hard-crashing the page. */
+export function offSettingChange(fn: Listener): void {
+  const i = listeners.indexOf(fn);
+  if (i >= 0) listeners.splice(i, 1);
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Persistence — auto-save to localStorage on every change so the user's
 // tweaks survive a page reload. Saves are debounced so dragging a slider

@@ -12,6 +12,10 @@ import { LEVELS } from "../level/levels";
 import { logEvent } from "./firebase";
 import { hasTouch as hasTouchDevice } from "../game/Input";
 import {
+  createRoom, joinRoom, subscribeToRoom, setReady, leaveRoom,
+  type RoomSnapshot, type RoomRole,
+} from "./multiplayer";
+import {
   getHighScores, qualifies, addScore, fetchHighScoresAsync,
   formatTime, type HighScore,
 } from "./highscores";
@@ -20,7 +24,7 @@ import {
   isMusicEnabled, setMusicEnabled, prebuildMusicBuffer,
 } from "../audio/Audio";
 
-type Scene = "loading" | "menu" | "game" | "postgame" | "instructions";
+type Scene = "loading" | "menu" | "game" | "postgame" | "instructions" | "lobby" | "highscores";
 
 export class App {
   private screens: HTMLElement;
@@ -31,6 +35,16 @@ export class App {
   /** Last-used selections, persisted across sessions for convenience. */
   private selectedMode: GameMode = "duel";
   private selectedLevelId = "metarola";
+
+  /** Online-lobby state — set while the user is in a multiplayer room.
+   *  Cleared on leave. */
+  private lobby: {
+    roomId: string;
+    role: RoomRole;
+    name: string;
+    snapshot: RoomSnapshot | null;
+    unsubscribe?: () => void;
+  } | null = null;
 
   /** rAF handle for the gamepad navigation poll loop. Non-null while
    *  the menu or postgame is visible. */
@@ -159,23 +173,34 @@ export class App {
     this.startMenuGamepadNav();
     // Resume the menu loop on return from postgame / Esc-out-of-match.
     void startMenuMusic();
+  }
+
+  private showHighscores(): void {
+    this.setScene("highscores");
+    this.screens.innerHTML = renderHighscores(this);
+    this.bindHighscores();
+    this.focusFirst();
+    this.startMenuGamepadNav();
     // Pull the latest global leaderboard for the current selection and
-    // re-render the menu when it arrives. The local cache renders first
-    // so the menu never blanks out.
+    // re-render when it arrives. Local cache renders first so the page
+    // never blanks out.
     void this.refreshHighscoresAndRender();
+    logEvent("highscores_opened", {
+      mode: this.selectedMode,
+      level: this.selectedLevelId,
+    });
   }
 
   /** Fetch the active level + mode's leaderboard from Firebase and, when
-   *  it resolves, re-render the menu if it changed. */
+   *  it resolves, re-render the highscores scene if it's still showing
+   *  the same selection. */
   private async refreshHighscoresAndRender(): Promise<void> {
     const beforeIds = this.selectedLevelId + "/" + this.selectedMode;
     await fetchHighScoresAsync(this.selectedLevelId, this.selectedMode);
-    // The user might have navigated away by the time we get here — only
-    // re-render if we're still on the same menu selection.
-    if (this.currentScene !== "menu") return;
+    if (this.currentScene !== "highscores") return;
     if (this.selectedLevelId + "/" + this.selectedMode !== beforeIds) return;
-    this.screens.innerHTML = renderMenu(this);
-    this.bindMenu();
+    this.screens.innerHTML = renderHighscores(this);
+    this.bindHighscores();
   }
 
   private showInstructions(): void {
@@ -186,6 +211,198 @@ export class App {
     this.focusFirst();
     this.startMenuGamepadNav();
     logEvent("instructions_opened");
+  }
+
+  // ── online multiplayer lobby ────────────────────────────────────────────
+
+  /** Initial lobby entry — pick "Host" or "Join". */
+  private showLobbyEntry(): void {
+    this.setScene("lobby");
+    const lastName = localStorage.getItem("tr.online.name") ?? "";
+    this.screens.innerHTML = `
+      <div class="screen lobby-screen">
+        <h1>Online race</h1>
+        <p class="hint">
+          Skapa ett rum och skicka koden till en kompis, eller skriv in
+          deras kod för att gå med. Race på vald bana, ${5} laps.
+        </p>
+        <section>
+          <h2>Ditt namn</h2>
+          <input id="online-name" type="text" maxlength="16"
+            value="${escapeHtml(lastName)}" placeholder="Ange ditt namn" />
+        </section>
+        <section>
+          <h2>Skapa nytt rum</h2>
+          <p class="hint">På banan <strong>${escapeHtml(LEVELS.find((l) => l.id === this.selectedLevelId)?.level.name ?? this.selectedLevelId)}</strong>.</p>
+          <button id="online-host" class="primary" type="button">🌐 Skapa rum</button>
+        </section>
+        <section>
+          <h2>Gå med i rum</h2>
+          <div class="row">
+            <input id="online-code" type="text" maxlength="4"
+              placeholder="ABCD" autocomplete="off" spellcheck="false"
+              style="text-transform: uppercase; letter-spacing: 0.4em;
+                     font-size: 22px; padding: 10px; flex: 1;" />
+            <button id="online-join" type="button">Gå med</button>
+          </div>
+          <p id="online-error" class="hint" style="color: #ff8a8a;"></p>
+        </section>
+        <div class="postgame-actions">
+          <button id="back-to-menu" type="button">Tillbaka</button>
+        </div>
+      </div>
+    `;
+    this.bindLobbyEntry();
+    this.focusFirst();
+    this.startMenuGamepadNav();
+  }
+
+  private bindLobbyEntry(): void {
+    const nameInput = this.screens.querySelector<HTMLInputElement>("#online-name");
+    const codeInput = this.screens.querySelector<HTMLInputElement>("#online-code");
+    const errorEl = this.screens.querySelector<HTMLElement>("#online-error");
+    const getName = (): string => {
+      const v = (nameInput?.value ?? "").trim();
+      if (v) localStorage.setItem("tr.online.name", v);
+      return v;
+    };
+    this.screens.querySelector<HTMLButtonElement>("#online-host")
+      ?.addEventListener("click", async () => {
+        const name = getName();
+        if (!name) { if (errorEl) errorEl.textContent = "Ange ditt namn först."; return; }
+        if (errorEl) errorEl.textContent = "Skapar rum…";
+        const code = await createRoom(name, this.selectedLevelId, "race");
+        if (!code) {
+          if (errorEl) errorEl.textContent = "Kunde inte skapa rum (Firebase otillgängligt).";
+          return;
+        }
+        this.enterLobby(code, "host", name);
+      });
+    this.screens.querySelector<HTMLButtonElement>("#online-join")
+      ?.addEventListener("click", async () => {
+        const name = getName();
+        if (!name) { if (errorEl) errorEl.textContent = "Ange ditt namn först."; return; }
+        const code = (codeInput?.value ?? "").trim().toUpperCase();
+        if (code.length !== 4) {
+          if (errorEl) errorEl.textContent = "Koden ska vara 4 bokstäver.";
+          return;
+        }
+        if (errorEl) errorEl.textContent = "Går med…";
+        const ok = await joinRoom(code, name);
+        if (!ok) {
+          if (errorEl) errorEl.textContent = "Hittade inte rummet (eller redan fullt).";
+          return;
+        }
+        this.enterLobby(code, "guest", name);
+      });
+    this.screens.querySelector<HTMLButtonElement>("#back-to-menu")
+      ?.addEventListener("click", () => this.showMenu());
+  }
+
+  private async enterLobby(roomId: string, role: RoomRole, name: string): Promise<void> {
+    // Clean up any previous subscription.
+    this.lobby?.unsubscribe?.();
+    this.lobby = { roomId, role, name, snapshot: null };
+    const unsubscribe = await subscribeToRoom(roomId, (snap) => {
+      if (!this.lobby || this.lobby.roomId !== roomId) return;
+      this.lobby.snapshot = snap;
+      if (snap?.status === "playing" && this.currentScene === "lobby") {
+        // Host's ready flip + guest's ready flip causes the room to
+        // transition to "playing". Kick off the actual match for both.
+        this.startOnlineMatch();
+      } else if (this.currentScene === "lobby") {
+        this.renderLobbyWaiting();
+      }
+    });
+    this.lobby.unsubscribe = unsubscribe;
+    this.renderLobbyWaiting();
+  }
+
+  private renderLobbyWaiting(): void {
+    if (!this.lobby) return;
+    const { roomId, role, snapshot } = this.lobby;
+    const youName = role === "host" ? snapshot?.host?.name : snapshot?.guest?.name;
+    const otherName = role === "host" ? snapshot?.guest?.name : snapshot?.host?.name;
+    const youReady = role === "host" ? snapshot?.host?.ready : snapshot?.guest?.ready;
+    const otherReady = role === "host" ? snapshot?.guest?.ready : snapshot?.host?.ready;
+    const levelName = LEVELS.find((l) => l.id === snapshot?.levelId)?.level.name
+      ?? snapshot?.levelId ?? "—";
+    this.screens.innerHTML = `
+      <div class="screen lobby-screen">
+        <h1>Rum ${escapeHtml(roomId)}</h1>
+        <p class="hint">Bana: <strong>${escapeHtml(levelName)}</strong> · Läge: race</p>
+        <section>
+          <h2>Spelare</h2>
+          <ul class="players-list">
+            <li class="${youReady ? "ready" : ""}">
+              <strong>${escapeHtml(youName ?? "—")}</strong>
+              <span class="role">(${role === "host" ? "host" : "guest"} — du)</span>
+              <span class="status">${youReady ? "✓ Ready" : "Väntar"}</span>
+            </li>
+            <li class="${otherReady ? "ready" : ""}">
+              <strong>${otherName ? escapeHtml(otherName) : "väntar på motspelare…"}</strong>
+              ${otherName ? `<span class="role">(${role === "host" ? "guest" : "host"})</span>` : ""}
+              <span class="status">${otherName ? (otherReady ? "✓ Ready" : "Väntar") : ""}</span>
+            </li>
+          </ul>
+        </section>
+        ${role === "host" ? `
+          <p class="hint">Dela koden <strong style="color:#ffd166;letter-spacing:0.4em">${escapeHtml(roomId)}</strong> med din motspelare.</p>
+        ` : ""}
+        <div class="postgame-actions">
+          <button id="lobby-leave" type="button">Lämna</button>
+          <button id="lobby-ready" class="primary" type="button"
+            ${otherName ? "" : "disabled"}>
+            ${youReady ? "Avbryt" : "Ready"}
+          </button>
+        </div>
+      </div>
+    `;
+    this.screens.querySelector<HTMLButtonElement>("#lobby-ready")
+      ?.addEventListener("click", () => {
+        if (!this.lobby) return;
+        void setReady(this.lobby.roomId, this.lobby.role, !youReady);
+      });
+    this.screens.querySelector<HTMLButtonElement>("#lobby-leave")
+      ?.addEventListener("click", () => this.leaveLobby());
+    this.focusFirst();
+  }
+
+  private async leaveLobby(): Promise<void> {
+    if (this.lobby) {
+      this.lobby.unsubscribe?.();
+      void leaveRoom(this.lobby.roomId, this.lobby.role);
+      this.lobby = null;
+    }
+    this.showMenu();
+  }
+
+  private startOnlineMatch(): void {
+    if (!this.lobby) return;
+    const { roomId, role } = this.lobby;
+    const levelId = this.lobby.snapshot?.levelId ?? this.selectedLevelId;
+    logEvent("online_match_start", { role, level: levelId });
+    stopMenuMusic();
+    this.stopMenuGamepadNav();
+    this.setScene("game");
+    this.screens.innerHTML = "";
+    const loader = this.buildInGameLoader();
+    this.currentGame = new Game(this.gameMount, {
+      mode: "race",
+      levelId,
+      online: { roomId, role },
+      onGameEnd: (result) => this.showPostgame(result),
+    });
+    void this.currentGame.init()
+      .then(() => {
+        loader.remove();
+        this.currentGame?.start();
+      })
+      .catch((err) => {
+        loader.remove();
+        console.error("Online game init failed:", err);
+      });
+    window.addEventListener("keydown", this.onGameKey);
   }
 
   private startGame(): void {
@@ -304,6 +521,10 @@ export class App {
       });
     this.screens.querySelector<HTMLButtonElement>("#open-instructions")
       ?.addEventListener("click", () => this.showInstructions());
+    this.screens.querySelector<HTMLButtonElement>("#open-highscores")
+      ?.addEventListener("click", () => this.showHighscores());
+    this.screens.querySelector<HTMLButtonElement>("#open-online")
+      ?.addEventListener("click", () => this.showLobbyEntry());
     this.screens.querySelector<HTMLButtonElement>("#music-toggle")
       ?.addEventListener("click", () => {
         const next = !isMusicEnabled();
@@ -312,6 +533,25 @@ export class App {
         // Re-render the menu so the button label updates.
         this.showMenu();
       });
+  }
+
+  private bindHighscores(): void {
+    this.screens.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        this.selectedMode = btn.dataset.mode as GameMode;
+        this.persistSelection();
+        this.showHighscores();
+      });
+    });
+    this.screens.querySelectorAll<HTMLButtonElement>("[data-level]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        this.selectedLevelId = btn.dataset.level!;
+        this.persistSelection();
+        this.showHighscores();
+      });
+    });
+    this.screens.querySelector<HTMLButtonElement>("#back-to-menu")
+      ?.addEventListener("click", () => this.showMenu());
   }
 
   private bindPostgame(result: GameResult): void {
@@ -372,6 +612,7 @@ export class App {
     return [
       "button:not([disabled])",
       ".link-btn",
+      ".icon-btn",
       ".mode-pick",
       ".level-pick",
       "[tabindex]:not([tabindex='-1'])",
@@ -386,8 +627,9 @@ export class App {
     this.gpPrevButtons = [];
     this.gpPrevAxis = { x: 0, y: 0 };
     const tick = () => {
-      // Stop polling if we've left the menu / postgame scenes.
-      if (this.currentScene !== "menu" && this.currentScene !== "postgame") {
+      // Stop polling once we've left a navigable overlay scene.
+      const navigableScenes: Scene[] = ["menu", "postgame", "instructions", "lobby", "highscores"];
+      if (!navigableScenes.includes(this.currentScene)) {
         this.menuNavRaf = null;
         return;
       }
@@ -485,49 +727,83 @@ function ensureElement(id: string): HTMLElement {
 
 function renderMenu(app: App): string {
   const levels = LEVELS;
-  const selectedLevel = levels.find((l) => l.id === app.levelId) ?? levels[0];
   const mode = app.mode;
-  const board = getHighScores(selectedLevel.id, mode).slice(0, 5);
 
   const levelButtons = levels.map((entry) => {
     const active = entry.id === app.levelId;
     return `
-      <button class="level-pick ${active ? "active" : ""}" data-level="${entry.id}">
-        <span class="level-pick-name">${escapeHtml(entry.level.name)}</span>
-        <span class="level-pick-sub">${entry.level.checkpoints?.length ?? 0} checkpoints</span>
+      <button class="level-pick ${active ? "active" : ""}" data-level="${entry.id}"
+        title="${escapeHtml(entry.level.name)}">
+        ${escapeHtml(entry.level.name)}
       </button>
     `;
   }).join("");
 
-  // Race-style modes (time-trial + 2P race) get their own group; combat
-  // (duel) is visually separated as a distinct mode below.
-  const modeGroups = `
-    <div class="mode-group race-group">
-      <div class="mode-group-label">🏁 Race · mot klockan</div>
-      <div class="mode-picks">
-        <button class="mode-pick race ${mode === "time-trial" ? "active" : ""}" data-mode="time-trial">
-          <strong>Time Trial</strong>
-          <span>1 spelare</span>
-        </button>
-        <button class="mode-pick race ${mode === "race" ? "active" : ""}" data-mode="race">
-          <strong>Race 2P</strong>
-          <span>2 spelare · first to finish</span>
-        </button>
+  // Single flat row of 4 mode buttons — colored borders (race=cyan,
+  // combat=red) carry the grouping info without verbose labels.
+  const modeButtons = `
+    <button class="mode-pick race ${mode === "time-trial" ? "active" : ""}" data-mode="time-trial"
+      title="Time Trial · 1 spelare mot klockan">🏁 Time Trial</button>
+    <button class="mode-pick race ${mode === "race" ? "active" : ""}" data-mode="race"
+      title="Race 2P · 2 spelare splitscreen">🏁 Race 2P</button>
+    <button class="mode-pick combat ${mode === "wave" ? "active" : ""}" data-mode="wave"
+      title="Skjut bottar · 1 spelare score attack">⚔️ Bottar</button>
+    <button class="mode-pick combat ${mode === "duel" ? "active" : ""}" data-mode="duel"
+      title="Duell · 2 spelare first to 5 frags">⚔️ Duell</button>
+  `;
+
+  return `
+    <div class="screen menu-screen">
+      <div class="menu-header">
+        <h1>TurboRaketti</h1>
+      </div>
+
+      <div class="menu-body">
+        <div class="mode-picks">${modeButtons}</div>
+        <div class="level-picks">${levelButtons}</div>
+      </div>
+
+      <div class="menu-footer">
+        <div class="icon-row">
+          <button id="open-instructions" class="icon-btn" type="button" title="Instruktioner" aria-label="Instruktioner">📖</button>
+          <button id="open-highscores" class="icon-btn" type="button" title="Highscores" aria-label="Highscores">🏆</button>
+          <button id="open-online" class="icon-btn" type="button" title="Online race" aria-label="Online race">🌐</button>
+          <a id="open-editor" class="icon-btn" href="${import.meta.env.BASE_URL}editor.html"
+            title="Level editor" aria-label="Level editor">✏️</a>
+          <button id="music-toggle" class="icon-btn" type="button"
+            title="${isMusicEnabled() ? "Stäng av musik" : "Spela musik"}"
+            aria-label="${isMusicEnabled() ? "Stäng av musik" : "Spela musik"}"
+            aria-pressed="${isMusicEnabled()}">
+            ${isMusicEnabled() ? "♪" : "♪̸"}
+          </button>
+        </div>
+        <button id="start-match" class="primary">Start</button>
       </div>
     </div>
-    <div class="mode-group combat-group">
-      <div class="mode-group-label">⚔️ Combat · skjut motståndaren</div>
-      <div class="mode-picks">
-        <button class="mode-pick combat ${mode === "wave" ? "active" : ""}" data-mode="wave">
-          <strong>Skjut bottar</strong>
-          <span>1 spelare · score attack</span>
-        </button>
-        <button class="mode-pick combat ${mode === "duel" ? "active" : ""}" data-mode="duel">
-          <strong>Duell</strong>
-          <span>2 spelare · first to ${5} frags</span>
-        </button>
-      </div>
-    </div>
+  `;
+}
+
+function renderHighscores(app: App): string {
+  const levels = LEVELS;
+  const selectedLevel = levels.find((l) => l.id === app.levelId) ?? levels[0];
+  const mode = app.mode;
+  const board = getHighScores(selectedLevel.id, mode).slice(0, 10);
+
+  const levelButtons = levels.map((entry) => {
+    const active = entry.id === app.levelId;
+    return `
+      <button class="level-pick ${active ? "active" : ""}" data-level="${entry.id}"
+        title="${escapeHtml(entry.level.name)}">
+        ${escapeHtml(entry.level.name)}
+      </button>
+    `;
+  }).join("");
+
+  const modeButtons = `
+    <button class="mode-pick race ${mode === "time-trial" ? "active" : ""}" data-mode="time-trial">🏁 Time Trial</button>
+    <button class="mode-pick race ${mode === "race" ? "active" : ""}" data-mode="race">🏁 Race 2P</button>
+    <button class="mode-pick combat ${mode === "wave" ? "active" : ""}" data-mode="wave">⚔️ Bottar</button>
+    <button class="mode-pick combat ${mode === "duel" ? "active" : ""}" data-mode="duel">⚔️ Duell</button>
   `;
 
   const scoresHtml = board.length
@@ -541,36 +817,17 @@ function renderMenu(app: App): string {
     : `<li class="empty">— inga rekord än —</li>`;
 
   return `
-    <div class="screen menu-screen">
-      <div class="menu-header">
-        <h1>TurboRaketti</h1>
-        <p class="tagline">Caves, rockets, glory.</p>
-      </div>
+    <div class="screen highscores-screen">
+      <h1>🏆 Highscores</h1>
 
-      <div class="menu-body">
-        <section>
-          <h2>Läge</h2>
-          ${modeGroups}
-        </section>
+      <div class="mode-picks">${modeButtons}</div>
+      <div class="level-picks">${levelButtons}</div>
 
-        <section>
-          <h2>Bana</h2>
-          <div class="level-picks">${levelButtons}</div>
-        </section>
+      <h2>Topp 10 — ${escapeHtml(selectedLevel.level.name)} • ${modeLabel(mode)}</h2>
+      <ol class="scoreboard">${scoresHtml}</ol>
 
-        <section class="scores">
-          <h2>Topp 5 — ${escapeHtml(selectedLevel.level.name)} • ${modeLabel(mode)}</h2>
-          <ol class="scoreboard">${scoresHtml}</ol>
-        </section>
-      </div>
-
-      <div class="menu-footer">
-        <button id="open-instructions" class="link-btn" type="button">📖 Instruktioner</button>
-        <a id="open-editor" class="link-btn" href="${import.meta.env.BASE_URL}editor.html">Level editor →</a>
-        <button id="music-toggle" class="link-btn" type="button" aria-pressed="${isMusicEnabled()}">
-          ${isMusicEnabled() ? "♪ Music: ON" : "♪ Music: OFF"}
-        </button>
-        <button id="start-match" class="primary">Start</button>
+      <div class="postgame-actions">
+        <button id="back-to-menu" class="primary">Tillbaka till menyn</button>
       </div>
     </div>
   `;

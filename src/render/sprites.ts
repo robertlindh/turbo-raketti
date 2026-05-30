@@ -232,14 +232,24 @@ function buildShipPalette(targetHex: string): Record<string, string> {
  *
  * `color` is an integer like 0x4fa0d0 (blue, matches the original) or
  * 0xd04f4f (red P2 variant). Only the hull family is recoloured.
+ *
+ * Cached by colour — respawns and bot spawns reuse the same GPU texture
+ * instead of uploading a fresh one every time. Without this cache, wave
+ * mode leaks one texture per bot kill, and the bullet/missile factories
+ * leak one per shot.
  */
+const SHIP_TEXTURE_CACHE = new Map<number, Texture>();
 export function makeShipTexture(_renderer: Renderer, color: number): Texture {
+    const cached = SHIP_TEXTURE_CACHE.get(color);
+    if (cached && !cached.destroyed) return cached;
     const W = 13;
     const H = 14;
     const { canvas, ctx } = makeCanvas(W, H);
     const palette = buildShipPalette(intToHex(color));
     blit(ctx, 0, 0, SHIP_GRID, palette);
-    return canvasToTexture(canvas);
+    const tex = canvasToTexture(canvas);
+    SHIP_TEXTURE_CACHE.set(color, tex);
+    return tex;
 }
 
 // ---------------------------------------------------------------------------
@@ -256,15 +266,21 @@ export function makeShipTexture(_renderer: Renderer, color: number): Texture {
  * the white head pixel and the dark tail tip untouched to preserve the
  * "tracer round" silhouette, and only re-hue the mid-bright body pixels.
  */
+let BULLET_TEXTURE: Texture | null = null;
 export function makeBulletTexture(_renderer: Renderer, color: number): Texture {
     // Just a single white-hot pixel — the bullet-trail particles handle the
     // visual streaking, so the sprite itself only marks the precise hit
     // point. Tinting is intentionally skipped: the additive blend lets it
     // read as a tiny point of light regardless of background.
+    // Tint variation is applied per-sprite via `sprite.tint`, so a single
+    // shared white texture is enough — cache it so we don't upload a fresh
+    // GPU texture on every shot fired.
     void color;
+    if (BULLET_TEXTURE && !BULLET_TEXTURE.destroyed) return BULLET_TEXTURE;
     const { canvas, ctx } = makeCanvas(1, 1);
     px(ctx, 0, 0, "#ffffff");
-    return canvasToTexture(canvas);
+    BULLET_TEXTURE = canvasToTexture(canvas);
+    return BULLET_TEXTURE;
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +299,10 @@ export function makeBulletTexture(_renderer: Renderer, color: number): Texture {
 // missiles read in their player colour at a glance.
 // ---------------------------------------------------------------------------
 
+const MISSILE_TEXTURE_CACHE = new Map<number, Texture>();
 export function makeMissileTexture(_renderer: Renderer, color: number): Texture {
+    const cached = MISSILE_TEXTURE_CACHE.get(color);
+    if (cached && !cached.destroyed) return cached;
     const W = 5;
     const H = 9;
     const { canvas, ctx } = makeCanvas(W, H);
@@ -343,7 +362,9 @@ export function makeMissileTexture(_renderer: Renderer, color: number): Texture 
     px(ctx, 3, 7, flameO);
     px(ctx, 2, 8, flameC);
 
-    return canvasToTexture(canvas);
+    const tex = canvasToTexture(canvas);
+    MISSILE_TEXTURE_CACHE.set(color, tex);
+    return tex;
 }
 
 // ---------------------------------------------------------------------------
@@ -353,9 +374,12 @@ export function makeMissileTexture(_renderer: Renderer, color: number): Texture 
 
 /**
  * Crystal texture for floor decoration. Always the same cyan palette — no
- * tinting parameter needed.
+ * tinting parameter needed. Cached so power-up spawns reuse a single
+ * GPU texture instead of allocating one per pickup.
  */
+let CRYSTAL_TEXTURE: Texture | null = null;
 export function makeCrystalTexture(_renderer: Renderer): Texture {
+    if (CRYSTAL_TEXTURE && !CRYSTAL_TEXTURE.destroyed) return CRYSTAL_TEXTURE;
     const W = 3;
     const H = 4;
     const { canvas, ctx } = makeCanvas(W, H);
@@ -371,5 +395,6 @@ export function makeCrystalTexture(_renderer: Renderer): Texture {
     px(ctx, 2, 2, "#82d8ff");
     // Base: dark.
     px(ctx, 1, 3, "#1f5078");
-    return canvasToTexture(canvas);
+    CRYSTAL_TEXTURE = canvasToTexture(canvas);
+    return CRYSTAL_TEXTURE;
 }

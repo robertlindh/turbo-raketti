@@ -23,7 +23,12 @@ export function makeGlowTexture(renderer: Renderer, radius: number): Texture {
 
   const r = Math.max(1, Math.round(radius));
   const cached = GLOW_TEXTURE_CACHE.get(r);
-  if (cached) return cached;
+  // `cached.destroyed` guards against the cache returning a stale texture
+  // after a prior Game.dispose() destroyed it via app.destroy({texture: true}).
+  // Without the guard, the next match's GlowLayer/ParticleSystem would attach
+  // a freed GPU texture to fresh sprites and either render garbage or hard-
+  // crash inside Pixi's batch renderer.
+  if (cached && !cached.destroyed) return cached;
 
   const size = r * 2;
   const canvas = document.createElement("canvas");
@@ -164,8 +169,15 @@ const PARTICLE_TEX_SIZE = PARTICLE_TEX_RADIUS * 2;
 const STREAK_TEX_W = 24;
 const STREAK_TEX_H = 6;
 
-/** Initial pool capacity. The pool grows on demand. */
+/** Initial pool capacity. The pool grows on demand up to PARTICLE_POOL_MAX. */
 const PARTICLE_POOL_INITIAL = 256;
+/** Hard cap on the pool size. Without this, sustained heavy emission
+ *  (race + 2 ship trails + power-up bursts + checkpoint FX) can balloon the
+ *  pool into the thousands of Sprite children — each one is a participating
+ *  node in Pixi's transform + render graph even when invisible. Above ~1k
+ *  sprites the per-frame walk becomes the dominant cost and the GC starts
+ *  thrashing. Drop emissions silently once the pool is full and busy. */
+const PARTICLE_POOL_MAX = 1024;
 
 interface Particle {
   sprite: Sprite;
@@ -389,9 +401,12 @@ export class ParticleSystem extends Container {
     return p;
   }
 
-  /** Claim a particle off the free list (growing the pool if empty). */
-  private _claimParticle(): Particle {
+  /** Claim a particle off the free list, growing the pool if empty up to
+   *  PARTICLE_POOL_MAX. Returns null once the cap is hit so callers can
+   *  silently drop the emission instead of unbounded growth. */
+  private _claimParticle(): Particle | null {
     if (this._free.length === 0) {
+      if (this._particles.length >= PARTICLE_POOL_MAX) return null;
       this._allocParticle(); // pushes onto _free
     }
     return this._free.pop()!;
@@ -410,6 +425,7 @@ export class ParticleSystem extends Container {
     streak: boolean;
   }): void {
     const p = this._claimParticle();
+    if (!p) return; // pool exhausted — drop the emission silently
     p.active = true;
     p.x = opts.x;
     p.y = opts.y;
@@ -450,7 +466,9 @@ let STREAK_TEXTURE: Texture | null = null;
 
 function makeStreakTexture(renderer: Renderer): Texture {
   void renderer;
-  if (STREAK_TEXTURE) return STREAK_TEXTURE;
+  // Same .destroyed dance as the glow cache — rebuild lazily if the prior
+  // session's app.destroy() killed the texture.
+  if (STREAK_TEXTURE && !STREAK_TEXTURE.destroyed) return STREAK_TEXTURE;
   const canvas = document.createElement("canvas");
   canvas.width = STREAK_TEX_W;
   canvas.height = STREAK_TEX_H;
