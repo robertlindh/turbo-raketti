@@ -911,7 +911,7 @@ export class Game {
     // caches check `.destroyed` and re-create lazily on the next match.
     try { this.app.destroy(true, { children: true, texture: true }); } catch { /* ignore */ }
     // DOM cruft that Game appends to <body>.
-    for (const id of ["scoreboard", "settings-panel", "race-hud", "countdown", "touch-controls"]) {
+    for (const id of ["scoreboard", "settings-panel", "settings-launcher", "race-hud", "countdown", "touch-controls"]) {
       document.getElementById(id)?.remove();
     }
   }

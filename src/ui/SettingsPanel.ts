@@ -227,8 +227,51 @@ export class SettingsPanel {
 
     document.body.appendChild(this.root);
 
+    // Visible launcher — a gear button in the top-right corner so users
+    // discover the settings without needing to know the Ctrl+Shift+S
+    // combo. The keyboard shortcut still works for power users.
+    const launcher = document.createElement("button");
+    launcher.id = "settings-launcher";
+    launcher.type = "button";
+    launcher.setAttribute("aria-label", "Open settings");
+    launcher.textContent = "⚙";
+    launcher.style.cssText = `
+      position: fixed;
+      bottom: 12px;
+      right: 12px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(10, 10, 18, 0.7);
+      border: 1px solid #2a2a36;
+      color: #ddd;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.12s, transform 0.12s;
+    `;
+    launcher.onmouseenter = () => {
+      launcher.style.background = "rgba(40, 40, 56, 0.85)";
+      launcher.style.transform = "rotate(30deg)";
+    };
+    launcher.onmouseleave = () => {
+      launcher.style.background = "rgba(10, 10, 18, 0.7)";
+      launcher.style.transform = "rotate(0deg)";
+    };
+    launcher.onclick = () => this.toggleOpen();
+    document.body.appendChild(launcher);
+    this.launcher = launcher;
+
     window.addEventListener("keydown", this.onKey);
   }
+
+  /** Visible launcher button — removed alongside the panel when the game
+   *  disposes so it doesn't pollute the menu. */
+  private launcher: HTMLElement | null = null;
 
   private onKey = (e: KeyboardEvent) => {
     // Ctrl+Shift+S (or Cmd+Shift+S) — toggle the hidden panel.
