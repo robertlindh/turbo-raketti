@@ -31,6 +31,11 @@ export class Camera {
    *  so the whole course is visible — the player needs to see the next
    *  gate, not just their own ship. */
   private wideMode = false;
+  /** Low-passed speed used to drive zoom. Filtered separately from the raw
+   *  body velocity so brief collision kicks / throttle bursts don't yank
+   *  the zoom around — the camera should "breathe" with sustained pace,
+   *  not flinch on every velocity tick. */
+  private smoothedSpeed = 0;
 
   /** Toggle wide-view zoom. Used by time-trial mode to keep the camera
    *  pulled back instead of glued to the lone ship. */
@@ -79,6 +84,14 @@ export class Camera {
 
     // --- auto-zoom -------------------------------------------------------
     const vp = this.getViewport();
+
+    // Low-pass the speed: even on hard accel from a stop, smoothedSpeed
+    // needs roughly a second to catch up, so the zoom drifts in instead
+    // of snapping. Same on the way down — small collisions don't yank.
+    const v0 = targets[0]!;
+    const rawSpeed = Math.hypot(v0.vx ?? 0, v0.vy ?? 0);
+    this.smoothedSpeed += (rawSpeed - this.smoothedSpeed) * 0.04;
+
     let targetZoom: number;
     if (targets.length > 1) {
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -93,35 +106,24 @@ export class Camera {
       const spanY = (maxY - minY) + padding * 2;
       targetZoom = Math.min(vp.width / spanX, vp.height / spanY);
     } else if (this.wideMode) {
-      // Race / time-trial — anchored to fitZoom() so the camera can still
-      // frame the whole level when needed, but we push 1.35× closer so
-      // the pilot sees gate detail at speed rather than a tiny dot on a
-      // full-level overview. Minimap is still there for the long-range
-      // cues. Slight speed-adaptive easing on top: at full cruise we drop
-      // back toward fitZoom() so high-speed runs don't feel claustrophobic.
-      const v = targets[0]!;
-      const speed = Math.hypot(v.vx ?? 0, v.vy ?? 0);
+      // Race / time-trial — anchored to fitZoom() and slightly inset so
+      // gates and ship are readable at low speed. Eases out gently at
+      // cruise so high-speed sections feel less hemmed in.
       const SPEED_FULL = 22;
-      const tRaw = Math.min(1, speed / SPEED_FULL);
+      const tRaw = Math.min(1, this.smoothedSpeed / SPEED_FULL);
       const t = tRaw * tRaw * (3 - 2 * tRaw);
       const ZOOM_REST = 1.45;
       const ZOOM_FAST = 1.15;
       const speedMultiplier = ZOOM_REST + (ZOOM_FAST - ZOOM_REST) * t;
       targetZoom = this.fitZoom() * speedMultiplier;
     } else {
-      // Single target on screen — speed-adaptive zoom. At rest the camera
-      // sits a touch closer than the old static value so the cave feels
-      // more intimate; as the ship picks up speed we pull back so the
-      // pilot can see what's coming at them. Mapped over [0, SPEED_FULL]
-      // m/s with a smoothstep curve so the zoom doesn't twitch on every
-      // small velocity change.
+      // Single target on screen — speed-adaptive zoom. Closer at rest,
+      // pulls back at speed so the pilot sees what's coming. Uses the
+      // smoothed speed so collisions / throttle taps don't twitch zoom.
       const baseZoom = this.maxZoom * 0.7 * 0.8; // ~33.6 — the old value
-      const v = targets[0]!;
-      const speed = Math.hypot(v.vx ?? 0, v.vy ?? 0);
-      const SPEED_FULL = 22; // m/s — typical max in-flight cruise speed
-      const tRaw = Math.min(1, speed / SPEED_FULL);
+      const SPEED_FULL = 22;
+      const tRaw = Math.min(1, this.smoothedSpeed / SPEED_FULL);
       const t = tRaw * tRaw * (3 - 2 * tRaw); // smoothstep
-      // 1.18 at rest (slightly more zoomed in) → 0.72 at full speed (zoom out)
       const ZOOM_REST = 1.18;
       const ZOOM_FAST = 0.72;
       const speedMultiplier = ZOOM_REST + (ZOOM_FAST - ZOOM_REST) * t;
@@ -134,7 +136,10 @@ export class Camera {
     // Clamp: never narrower than "fit the whole level", never closer than maxZoom.
     const minZoom = this.fitZoom();
     const clamped = Math.max(minZoom, Math.min(this.maxZoom, targetZoom));
-    this.zoom += (clamped - this.zoom) * alpha;
+    // Zoom uses its own much slower lerp than pan — pan needs to feel
+    // responsive (the ship is the focal point) but zoom shifts should
+    // glide. 0.025/frame ≈ 0.7s time constant at 60fps.
+    this.zoom += (clamped - this.zoom) * 0.025;
 
     // --- pan -------------------------------------------------------------
     // Clamp pan so the camera never reveals "outside the level" in either
