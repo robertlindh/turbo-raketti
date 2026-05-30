@@ -13,6 +13,7 @@ import { logEvent } from "./firebase";
 import { hasTouch as hasTouchDevice } from "../game/Input";
 import {
   createRoom, joinRoom, subscribeToRoom, setReady, leaveRoom,
+  setRoomStatusPlaying,
   type RoomSnapshot, type RoomRole,
 } from "./multiplayer";
 import {
@@ -306,9 +307,14 @@ export class App {
     const unsubscribe = await subscribeToRoom(roomId, (snap) => {
       if (!this.lobby || this.lobby.roomId !== roomId) return;
       this.lobby.snapshot = snap;
+      // Race-safe auto-transition: whichever client first sees both
+      // sides ready bumps the status. Idempotent — both clients writing
+      // "playing" is the same as one. Without this the transition would
+      // depend on the exact order setReady calls land.
+      if (snap?.host?.ready && snap?.guest?.ready && snap.status === "waiting") {
+        void setRoomStatusPlaying(roomId);
+      }
       if (snap?.status === "playing" && this.currentScene === "lobby") {
-        // Host's ready flip + guest's ready flip causes the room to
-        // transition to "playing". Kick off the actual match for both.
         this.startOnlineMatch();
       } else if (this.currentScene === "lobby") {
         this.renderLobbyWaiting();

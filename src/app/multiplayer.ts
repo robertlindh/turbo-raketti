@@ -157,6 +157,19 @@ export async function setReady(
   }
 }
 
+/** Transition the room to "playing". Idempotent — called by whichever
+ *  client first sees both ready flags via the room subscription. */
+export async function setRoomStatusPlaying(roomId: string): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  const { ref, update } = await import("firebase/database");
+  try {
+    await update(ref(db, `/rooms/${roomId}`), { status: "playing" });
+  } catch (err) {
+    console.warn("setRoomStatusPlaying failed:", err);
+  }
+}
+
 /** Publish our ship state to the room. Called ~15Hz from the game tick. */
 export async function publishState(
   roomId: string,
