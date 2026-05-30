@@ -93,10 +93,21 @@ export class Camera {
       const spanY = (maxY - minY) + padding * 2;
       targetZoom = Math.min(vp.width / spanX, vp.height / spanY);
     } else if (this.wideMode) {
-      // Race / time-trial — frame the entire level. fitZoom() with a 1.0
-      // multiplier shows everything from edge to edge so the player can
-      // see the whole course and uses the minimap for next-gate cues.
-      targetZoom = this.fitZoom() * 1.0;
+      // Race / time-trial — anchored to fitZoom() so the camera can still
+      // frame the whole level when needed, but we push 1.35× closer so
+      // the pilot sees gate detail at speed rather than a tiny dot on a
+      // full-level overview. Minimap is still there for the long-range
+      // cues. Slight speed-adaptive easing on top: at full cruise we drop
+      // back toward fitZoom() so high-speed runs don't feel claustrophobic.
+      const v = targets[0]!;
+      const speed = Math.hypot(v.vx ?? 0, v.vy ?? 0);
+      const SPEED_FULL = 22;
+      const tRaw = Math.min(1, speed / SPEED_FULL);
+      const t = tRaw * tRaw * (3 - 2 * tRaw);
+      const ZOOM_REST = 1.45;
+      const ZOOM_FAST = 1.15;
+      const speedMultiplier = ZOOM_REST + (ZOOM_FAST - ZOOM_REST) * t;
+      targetZoom = this.fitZoom() * speedMultiplier;
     } else {
       // Single target on screen — speed-adaptive zoom. At rest the camera
       // sits a touch closer than the old static value so the cave feels
