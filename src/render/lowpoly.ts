@@ -142,3 +142,45 @@ export function drawLowPolyHull(g: Graphics, color: number, angle = 0): void {
     flat(NOSE, R_SHOULDER, R_MID, R_WING, R_TAIL, TAIL_C, L_TAIL, L_WING, L_MID, L_SHOULDER),
   ).stroke({ color: outline, width: 0.5, alignment: 0.5, join: "round" });
 }
+
+// ---------------------------------------------------------------------------
+// Faceted ring — a low-poly "torus" for the race-checkpoint gates. The ring
+// is split into `segments` flat trapezoid facets; each is shaded by how much
+// its outward normal faces the same world light as the ship, so the gate
+// reads as a 3D ring catching light from the upper-left. Thin dark radial
+// seams sell the facet edges. Drawn centred on (0, 0) in world metres.
+// ---------------------------------------------------------------------------
+
+/** Gentler swing than the ship so gates stay readable on their shadow side. */
+const RING_SHADE = 0.5;
+
+export function drawFacetRing(
+  g: Graphics,
+  innerR: number,
+  outerR: number,
+  segments: number,
+  base: number,
+): void {
+  const seam = darken(base, 0.7);
+  for (let i = 0; i < segments; i++) {
+    const a0 = (i / segments) * Math.PI * 2;
+    const a1 = ((i + 1) / segments) * Math.PI * 2;
+    const mid = (a0 + a1) / 2;
+    const d = Math.cos(mid) * LIGHT_X + Math.sin(mid) * LIGHT_Y;
+    const col = d >= 0 ? lighten(base, d * RING_SHADE) : darken(base, -d * RING_SHADE);
+    g.poly([
+      Math.cos(a0) * innerR, Math.sin(a0) * innerR,
+      Math.cos(a0) * outerR, Math.sin(a0) * outerR,
+      Math.cos(a1) * outerR, Math.sin(a1) * outerR,
+      Math.cos(a1) * innerR, Math.sin(a1) * innerR,
+    ]).fill({ color: col });
+  }
+  // Radial seams between facets.
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    g.poly([
+      Math.cos(a) * innerR, Math.sin(a) * innerR,
+      Math.cos(a) * outerR, Math.sin(a) * outerR,
+    ]).stroke({ color: seam, width: 0.1 });
+  }
+}

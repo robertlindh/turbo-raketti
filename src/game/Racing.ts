@@ -1,5 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { Level, Point } from "../level/Level";
+import { drawFacetRing } from "../render/lowpoly";
 
 /** Pickup-style distance for hitting a checkpoint. */
 export const CHECKPOINT_RADIUS = 3.0;
@@ -33,13 +34,10 @@ class CheckpointView {
       .fill({ color: 0xffd166, alpha: 0.18 });
     this.view.addChild(this.glow);
 
-    // 2. Bold gold ring — the "gate" itself. Two concentric strokes give
-    //    it visual weight at gameplay zoom (~22 px/m).
+    // 2. Bold gold ring — the "gate" itself. A faceted low-poly torus lit by
+    //    the same world light as the ship, so it reads as 3D at gameplay zoom.
     this.base = new Graphics();
-    this.base.circle(0, 0, CHECKPOINT_RADIUS)
-      .stroke({ color: 0xffd166, width: 0.45, alpha: 1 });
-    this.base.circle(0, 0, CHECKPOINT_RADIUS - 0.5)
-      .stroke({ color: 0xffffff, width: 0.18, alpha: 0.85 });
+    drawFacetRing(this.base, CHECKPOINT_RADIUS - 0.75, CHECKPOINT_RADIUS, 12, 0xffd166);
     this.view.addChild(this.base);
 
     // 3. Number — a chunky pixel-art digit (1-9) in the middle.
@@ -102,10 +100,11 @@ class CheckpointView {
     let stack = 0;
     for (const { color } of nextForPlayers) {
       const r = new Graphics();
-      const outer = CHECKPOINT_RADIUS + 0.6 + stack * 0.4;
-      r.circle(0, 0, outer)
-        .stroke({ color, width: 0.55, alpha: 0.95 });
-      r.circle(0, 0, outer + 0.6).fill({ color, alpha: 0.12 });
+      const outer = CHECKPOINT_RADIUS + 0.7 + stack * 0.5;
+      // Soft glow behind, then a faceted ring in the player's colour so the
+      // "fly through this one next" cue matches the low-poly gate.
+      r.circle(0, 0, outer + 0.5).fill({ color, alpha: 0.12 });
+      drawFacetRing(r, outer - 0.5, outer, 12, color);
       r.scale.set(targetPulse, targetPulse);
       this.view.addChild(r);
       this.rings.push(r);
