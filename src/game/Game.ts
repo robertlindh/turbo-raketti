@@ -8,8 +8,8 @@ import {
   publishState, subscribeToRoom, leaveRoom,
   type RemoteShipState,
 } from "../app/multiplayer";
-import { Sprite } from "pixi.js";
-import { makeShipTexture } from "../render/sprites";
+import { Graphics } from "pixi.js";
+import { drawLowPolyHull } from "../render/lowpoly";
 import { Camera } from "./Camera";
 import {
   KeyboardInput, GamepadInput, TouchInput, orInputs, hasTouch,
@@ -224,7 +224,9 @@ export class Game {
   private replayAccum = 0;
 
   /** Online state — populated only when config.online is set. */
-  private remoteShip: Sprite | null = null;
+  private remoteShip: Graphics | null = null;
+  /** Remote ghost's hull tint, kept so its facets can be re-lit on rotation. */
+  private remoteColor = 0xffffff;
   /** Latest snapshot received from Firebase. Treated as immutable ground
    *  truth; render-time extrapolation lives separately on `remoteRender`. */
   private remoteState: RemoteShipState | null = null;
@@ -806,9 +808,11 @@ export class Game {
     // Spawn the remote ghost sprite. Use the opposing player's colour so
     // the host (blue P1) sees the guest as red, and vice versa.
     const remoteColor = online.role === "host" ? 0xff7a7a : 0x6cc0ff;
-    const texture = makeShipTexture(this.app.renderer, remoteColor);
-    this.remoteShip = new Sprite(texture);
-    this.remoteShip.anchor.set(0.5, 0.5);
+    this.remoteColor = remoteColor;
+    // Low-poly vector hull, centred on origin (no anchor needed), scaled from
+    // the 13px-wide sprite space down to ~2 m wide in world units.
+    this.remoteShip = new Graphics();
+    drawLowPolyHull(this.remoteShip, remoteColor, 0);
     this.remoteShip.scale.set(2 / 13);
     this.remoteShip.alpha = 0.75; // slightly translucent so it reads as a remote ghost
     this.remoteShip.visible = false; // hidden until first state arrives
@@ -877,6 +881,8 @@ export class Game {
     this.remoteShip.x = this.remoteState.x + this.remoteState.vx * t;
     this.remoteShip.y = this.remoteState.y + this.remoteState.vy * t;
     this.remoteShip.rotation = this.remoteState.r + Math.PI / 2;
+    // Re-light the ghost's facets against the world light as it turns.
+    drawLowPolyHull(this.remoteShip, this.remoteColor, this.remoteShip.rotation);
   }
 
   /** Tear down the Pixi canvas + all DOM the game added (scoreboard, settings

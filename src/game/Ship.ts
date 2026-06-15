@@ -1,9 +1,9 @@
 import RAPIER from "@dimforge/rapier2d-compat";
-import { Container, Graphics, Renderer, Sprite } from "pixi.js";
+import { Container, Graphics, Renderer } from "pixi.js";
 import type { PhysicsWorld } from "./PhysicsWorld";
 import { PHYS_DT } from "./PhysicsWorld";
 import type { ShipInput } from "./Input";
-import { makeShipTexture } from "../render/sprites";
+import { drawLowPolyHull } from "../render/lowpoly";
 import { SETTINGS } from "./Settings";
 
 export const SHIP_RADIUS = 1.0; // metres (collider radius)
@@ -22,7 +22,11 @@ export class Ship {
   readonly collider: RAPIER.Collider;
   /** Wrapper container that the camera transform reaches — holds hull + flame. */
   readonly view: Container;
-  private hull: Sprite;
+  private hull: Graphics;
+  /** Base hull tint, kept so the facets can be re-lit each frame. */
+  private hullColor: number;
+  /** Last rotation the hull was painted at — skips redraw when not turning. */
+  private lastHullAngle = NaN;
   private flame: Graphics;
   private shieldRing: Graphics;
   private shieldActive = false;
@@ -48,7 +52,7 @@ export class Ship {
 
   constructor(
     physics: PhysicsWorld,
-    renderer: Renderer,
+    _renderer: Renderer,
     parent: Container,
     cfg: ShipConfig,
   ) {
@@ -99,10 +103,12 @@ export class Ship {
     this.flame.visible = false;
     this.view.addChild(this.flame);
 
-    // Hull sprite.
-    const texture = makeShipTexture(renderer, cfg.color);
-    this.hull = new Sprite(texture);
-    this.hull.anchor.set(0.5, 0.5);
+    // Hull — low-poly flat-shaded vector facets, drawn in the 13×14 sprite-px
+    // space so the flame / shield / aura offsets above still line up. Re-lit
+    // each frame in sync() so the lit side tracks a fixed world light.
+    this.hullColor = cfg.color;
+    this.hull = new Graphics();
+    drawLowPolyHull(this.hull, cfg.color, 0);
     this.view.addChild(this.hull);
 
     this.drawFlame();
@@ -183,6 +189,15 @@ export class Ship {
     // Texture's nose points UP (-Y); add π/2 so body.rotation=0 (facing +X)
     // points the sprite +X visually.
     this.view.rotation = prev.r + dr * alpha + Math.PI / 2;
+
+    // Re-light the hull facets against the fixed world light whenever the
+    // ship has turned enough to matter. The hull geometry rotates with the
+    // view container; passing the view's world rotation lets the lit side
+    // sweep across the facets instead of spinning rigidly with them.
+    if (!(Math.abs(this.view.rotation - this.lastHullAngle) < 0.01)) {
+      drawLowPolyHull(this.hull, this.hullColor, this.view.rotation);
+      this.lastHullAngle = this.view.rotation;
+    }
 
     // Flame on/off + per-frame flicker.
     this.flame.visible = this.thrustOn;
