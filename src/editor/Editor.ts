@@ -13,7 +13,7 @@
 // and lets us preview exactly what the game will draw.
 
 import {
-  Application, Container, Sprite, Graphics, Text, TextStyle,
+  Application, Container, Graphics, Text, TextStyle,
 } from "pixi.js";
 import type { Level } from "../level/Level";
 import { renderLevelBackdrop } from "../level/LevelLoader";
@@ -35,7 +35,7 @@ export class Editor {
   level: Level;
   /** True while a backdrop re-render is pending (coalesced via rAF). */
   private redrawPending = false;
-  private backdropSprite: Sprite | null = null;
+  private backdropSprite: Container | null = null;
 
   camera!: CameraController;
   overlay!: OverlayRenderer;
@@ -137,7 +137,9 @@ export class Editor {
   private renderBackdrop(): void {
     if (this.backdropSprite) {
       this.backdropLayer.removeChild(this.backdropSprite);
-      this.backdropSprite.destroy();
+      // Container of sprites + the rock-mesh Graphics — free children and their
+      // canvas textures so editor re-renders on every edit don't leak GPU memory.
+      this.backdropSprite.destroy({ children: true, texture: true });
     }
     try {
       this.backdropSprite = renderLevelBackdrop(this.level);

@@ -80,8 +80,8 @@ function flat(...pts: Array<[number, number]>): number[] {
 // it. `+Y` is DOWN, so the light below points from the upper-left.
 // ---------------------------------------------------------------------------
 
-const LIGHT_X = -0.55;
-const LIGHT_Y = -0.83;
+export const LIGHT_X = -0.55;
+export const LIGHT_Y = -0.83;
 /** Max ± brightness swing applied to a facet fully facing toward/away. */
 const SHADE_AMOUNT = 0.85;
 

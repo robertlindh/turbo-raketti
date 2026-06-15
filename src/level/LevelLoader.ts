@@ -6,6 +6,7 @@ import RAPIER from "@dimforge/rapier2d-compat";
 import { Container, Renderer, Sprite, Texture } from "pixi.js";
 import type { Level, LevelTheme, Point } from "./Level";
 import type { PhysicsWorld } from "../game/PhysicsWorld";
+import { buildRockMesh } from "../render/caveMesh";
 
 /** Logical pixels per world metre used by the backdrop raster. */
 const PIXELS_PER_METRE = 8;
@@ -14,8 +15,8 @@ const PIXELS_PER_METRE = 8;
 type AnyCtx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 export interface LoadedLevel {
-  /** Sprite holding the rendered backdrop, ready to drop into the world layer. */
-  backdrop: Sprite;
+  /** Container holding the atmosphere + vector rock mesh + decoration overlay. */
+  view: Container;
   /** The Level used to build this. */
   level: Level;
 }
@@ -27,7 +28,7 @@ export interface LoadedLevel {
  * the world does).
  */
 export function loadLevel(
-  renderer: Renderer,
+  _renderer: Renderer,
   physics: PhysicsWorld,
   parent: Container,
   level: Level,
@@ -35,11 +36,11 @@ export function loadLevel(
   // 1. Build colliders from the same polygon data.
   createColliders(physics, level);
 
-  // 2. Render the backdrop.
-  const backdrop = renderBackdrop(renderer, level);
-  parent.addChild(backdrop);
+  // 2. Build the visuals (raster atmosphere + vector rock mesh + overlay).
+  const view = buildLevelView(level);
+  parent.addChild(view);
 
-  return { backdrop, level };
+  return { view, level };
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -82,56 +83,42 @@ function createColliders(physics: PhysicsWorld, level: Level): void {
  * Render the level's backdrop as a Sprite — no physics involved. Used by the
  * level editor for live preview, and internally by `loadLevel`.
  */
-export function renderLevelBackdrop(level: Level): Sprite {
-  return renderBackdrop(null as unknown as Renderer, level);
+export function renderLevelBackdrop(level: Level): Container {
+  return buildLevelView(level);
 }
 
-function renderBackdrop(_renderer: Renderer, level: Level): Sprite {
-  const { bounds, theme } = level;
-  const widthM = bounds.maxX - bounds.minX;
-  const heightM = bounds.maxY - bounds.minY;
-  const W = Math.max(1, Math.round(widthM * PIXELS_PER_METRE));
-  const H = Math.max(1, Math.round(heightM * PIXELS_PER_METRE));
+/**
+ * Assemble the full cave view: a baked atmosphere sprite (sky + nebula +
+ * stars) at the back, the vector low-poly rock mesh in the middle, and a baked
+ * overlay sprite (water + decorations + vignette) on top so crystals still sit
+ * above the rock. Shared by the game (`loadLevel`) and the editor preview.
+ */
+function buildLevelView(level: Level): Container {
+  const c = new Container();
+  c.addChild(buildAtmosphereSprite(level));
+  c.addChild(buildRockMesh(level));
+  c.addChild(buildOverlaySprite(level));
+  return c;
+}
 
+/** Allocate a backdrop-resolution canvas + 2D context for `level`. */
+function makeLevelCanvas(level: Level): {
+  canvas: HTMLCanvasElement; ctx: AnyCtx2D; W: number; H: number;
+} {
+  const { bounds } = level;
+  const W = Math.max(1, Math.round((bounds.maxX - bounds.minX) * PIXELS_PER_METRE));
+  const H = Math.max(1, Math.round((bounds.maxY - bounds.minY) * PIXELS_PER_METRE));
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("LevelLoader: failed to acquire 2D context");
   ctx.imageSmoothingEnabled = false;
+  return { canvas, ctx, W, H };
+}
 
-  // Helper: convert world coords to texture px.
-  const wx = (x: number) => (x - bounds.minX) * PIXELS_PER_METRE;
-  const wy = (y: number) => (y - bounds.minY) * PIXELS_PER_METRE;
-
-  // 1. Sky gradient over the full canvas.
-  drawSkyGradient(ctx, W, H, theme);
-
-  // 2. Nebula wash (optional).
-  drawNebula(ctx, W, H, theme);
-
-  // 3. Star field, deterministic.
-  drawStars(ctx, W, H, theme);
-
-  // 4. Rock fill: rectangle MINUS the boundary polygon (so everything outside
-  //    the cave interior is rock). Subtract obstacle polygons too so they get
-  //    rock-filled instead of staying as cave interior. Use even-odd fill rule.
-  drawRockFill(ctx, W, H, level, wx, wy);
-
-  // 5. Rim light along the interior side of each polygon edge.
-  drawRimLight(ctx, level, wx, wy);
-
-  // 5b. Water zones drawn on top of the interior — semi-transparent teal
-  //     with a lighter top edge.
-  drawWaterZones(ctx, level, wx, wy);
-
-  // 6. Decorations (crystals etc.).
-  drawDecorations(ctx, level, wx, wy);
-
-  // 7. Subtle vignette to push interior contrast.
-  drawVignette(ctx, W, H);
-
-  // Wrap into Pixi texture + Sprite.
+/** Wrap a canvas as a world-positioned, nearest-sampled Sprite. */
+function spriteFromCanvas(canvas: HTMLCanvasElement, bounds: Level["bounds"]): Sprite {
   const texture = Texture.from(canvas);
   texture.source.scaleMode = "nearest";
   const sprite = new Sprite(texture);
@@ -139,6 +126,28 @@ function renderBackdrop(_renderer: Renderer, level: Level): Sprite {
   sprite.y = bounds.minY;
   sprite.scale.set(1 / PIXELS_PER_METRE, 1 / PIXELS_PER_METRE);
   return sprite;
+}
+
+/** Back layer — opaque sky gradient, nebula wash, deterministic stars. */
+function buildAtmosphereSprite(level: Level): Sprite {
+  const { canvas, ctx, W, H } = makeLevelCanvas(level);
+  drawSkyGradient(ctx, W, H, level.theme);
+  drawNebula(ctx, W, H, level.theme);
+  drawStars(ctx, W, H, level.theme);
+  return spriteFromCanvas(canvas, level.bounds);
+}
+
+/** Front layer — transparent except water, decorations and the vignette,
+ *  so they read on top of the vector rock. */
+function buildOverlaySprite(level: Level): Sprite {
+  const { bounds } = level;
+  const { canvas, ctx, W, H } = makeLevelCanvas(level);
+  const wx = (x: number) => (x - bounds.minX) * PIXELS_PER_METRE;
+  const wy = (y: number) => (y - bounds.minY) * PIXELS_PER_METRE;
+  drawWaterZones(ctx, level, wx, wy);
+  drawDecorations(ctx, level, wx, wy);
+  drawVignette(ctx, W, H);
+  return spriteFromCanvas(canvas, bounds);
 }
 
 function drawSkyGradient(
@@ -193,104 +202,6 @@ function drawStars(
   }
 }
 
-function drawRockFill(
-  ctx: AnyCtx2D,
-  W: number, H: number,
-  level: Level,
-  wx: (x: number) => number,
-  wy: (y: number) => number,
-): void {
-  // Build a Path2D combining outer rect + boundary + obstacles. Used both
-  // for filling rock with even-odd and for clipping subsequent passes.
-  const path = new Path2D();
-  path.moveTo(0, 0);
-  path.lineTo(W, 0);
-  path.lineTo(W, H);
-  path.lineTo(0, H);
-  path.closePath();
-  if (level.boundary.length >= 3) addPolygonToPath(path, level.boundary, wx, wy);
-  for (const poly of level.obstacles) {
-    if (poly.length >= 3) addPolygonToPath(path, poly, wx, wy);
-  }
-
-  // 1. Fill the entire rock area with the darkest tone.
-  ctx.fillStyle = level.theme.rockDeepest;
-  ctx.fill(path, "evenodd");
-
-  // 2. Stippled noise texture for the rock so it doesn't read as flat.
-  ctx.save();
-  ctx.clip(path, "evenodd");
-  drawRockNoise(ctx, W, H, level);
-  ctx.restore();
-
-  // 3. Nested concentric bands from the boundary inward into the rock,
-  //    creating a faux-AO + depth effect. Outermost band is dark, innermost
-  //    is lightest (closer to the cave interior). Stroke order matters —
-  //    later strokes overwrite earlier ones, so we paint from widest to
-  //    narrowest with progressively lighter tones.
-  ctx.save();
-  ctx.clip(path, "evenodd");
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  const bands: Array<{ width: number; color: string }> = [
-    { width: 14, color: level.theme.rockDark },
-    { width: 9,  color: level.theme.rockMid },
-    { width: 5,  color: level.theme.rockLight },
-  ];
-  for (const b of bands) {
-    ctx.strokeStyle = b.color;
-    ctx.lineWidth = b.width;
-    strokeAllPolygonsRaw(ctx, level, wx, wy);
-  }
-  ctx.restore();
-}
-
-/** Stipple the rock area with a deterministic noise pattern. Uses 4×4 cells
- *  to keep the fillRect count under ~10k for a 500×400 canvas. */
-function drawRockNoise(
-  ctx: AnyCtx2D, W: number, H: number, level: Level,
-): void {
-  const rng = mulberry32(0xdeadbeef);
-  const cell = 4;
-  // Group fills by colour to minimise fillStyle changes.
-  const dark: number[] = [];
-  const mid: number[] = [];
-  const light: number[] = [];
-  for (let y = 0; y < H; y += cell) {
-    for (let x = 0; x < W; x += cell) {
-      const r = rng();
-      const bucket = r < 0.6 ? dark : r < 0.9 ? mid : light;
-      bucket.push(x, y);
-    }
-  }
-  const paint = (coords: number[], color: string) => {
-    ctx.fillStyle = color;
-    for (let i = 0; i < coords.length; i += 2) {
-      ctx.fillRect(coords[i], coords[i + 1], cell, cell);
-    }
-  };
-  paint(dark, level.theme.rockDeepest);
-  paint(mid, level.theme.rockDark);
-  paint(light, level.theme.rockMid);
-}
-
-/** Stroke polygons without changing strokeStyle/lineWidth — caller sets them. */
-function strokeAllPolygonsRaw(
-  ctx: AnyCtx2D, level: Level,
-  wx: (x: number) => number, wy: (y: number) => number,
-): void {
-  for (const poly of [level.boundary, ...level.obstacles]) {
-    if (poly.length < 3) continue;
-    ctx.beginPath();
-    ctx.moveTo(wx(poly[0].x), wy(poly[0].y));
-    for (let i = 1; i < poly.length; i++) {
-      ctx.lineTo(wx(poly[i].x), wy(poly[i].y));
-    }
-    ctx.closePath();
-    ctx.stroke();
-  }
-}
-
 function drawWaterZones(
   ctx: AnyCtx2D,
   level: Level,
@@ -323,16 +234,6 @@ function drawWaterZones(
     ctx.stroke();
   }
   ctx.restore();
-}
-
-function drawRimLight(
-  ctx: AnyCtx2D,
-  level: Level,
-  wx: (x: number) => number,
-  wy: (y: number) => number,
-): void {
-  // A 1px-thick stroke right on the boundary draws a bright rim.
-  strokePolygons(ctx, level, wx, wy, level.theme.rockRim, 1);
 }
 
 function drawDecorations(
@@ -520,37 +421,6 @@ function drawVignette(ctx: AnyCtx2D, W: number, H: number): void {
 // ──────────────────────────────────────────────────────────────────────────
 // Geometry / colour helpers.
 // ──────────────────────────────────────────────────────────────────────────
-
-function addPolygonToPath(
-  path: Path2D, poly: Point[],
-  wx: (x: number) => number, wy: (y: number) => number,
-): void {
-  path.moveTo(wx(poly[0].x), wy(poly[0].y));
-  for (let i = 1; i < poly.length; i++) {
-    path.lineTo(wx(poly[i].x), wy(poly[i].y));
-  }
-  path.closePath();
-}
-
-function strokePolygons(
-  ctx: AnyCtx2D, level: Level,
-  wx: (x: number) => number, wy: (y: number) => number,
-  color: string, width: number,
-): void {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
-  ctx.lineJoin = "round";
-  for (const poly of [level.boundary, ...level.obstacles]) {
-    if (poly.length < 3) continue;
-    ctx.beginPath();
-    ctx.moveTo(wx(poly[0].x), wy(poly[0].y));
-    for (let i = 1; i < poly.length; i++) {
-      ctx.lineTo(wx(poly[i].x), wy(poly[i].y));
-    }
-    ctx.closePath();
-    ctx.stroke();
-  }
-}
 
 function mulberry32(seed: number): () => number {
   let s = seed >>> 0;
