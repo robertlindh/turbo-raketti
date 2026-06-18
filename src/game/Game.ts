@@ -10,7 +10,7 @@ import {
 } from "../app/multiplayer";
 import { Graphics } from "pixi.js";
 import { drawLowPolyHull } from "../render/lowpoly";
-import { Camera } from "./Camera";
+import { Camera, ZOOM_OUT } from "./Camera";
 import {
   KeyboardInput, GamepadInput, TouchInput, orInputs, hasTouch,
   PLAYER1_KEYS, PLAYER2_KEYS, type KeyBinding,
@@ -917,7 +917,7 @@ export class Game {
     // caches check `.destroyed` and re-create lazily on the next match.
     try { this.app.destroy(true, { children: true, texture: true }); } catch { /* ignore */ }
     // DOM cruft that Game appends to <body>.
-    for (const id of ["scoreboard", "settings-panel", "settings-launcher", "race-hud", "countdown", "touch-controls"]) {
+    for (const id of ["scoreboard", "settings-panel", "race-hud", "countdown", "touch-controls"]) {
       document.getElementById(id)?.remove();
     }
   }
@@ -1845,7 +1845,7 @@ export class Game {
     const renderer = this.app.renderer;
 
     const applyCameraFor = (ship: { x: number; y: number }) => {
-      const zoom = 22 * SETTINGS.cameraZoom;
+      const zoom = 22 * ZOOM_OUT * SETTINGS.cameraZoom;
       this.worldLayer.scale.set(zoom, zoom);
       this.worldLayer.x = half.w / 2 - ship.x * zoom;
       this.worldLayer.y = half.h / 2 - ship.y * zoom;

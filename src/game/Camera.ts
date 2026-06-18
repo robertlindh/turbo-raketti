@@ -1,6 +1,11 @@
 import type { Container } from "pixi.js";
 import { SETTINGS } from "./Settings";
 
+/** Global framing pull-back: show ~50% more of the world while flying.
+ *  Lower pixels-per-metre = wider view. Applied on top of the per-mode
+ *  auto-zoom and before the user's `cameraZoom` multiplier. */
+export const ZOOM_OUT = 1 / 1.5;
+
 export interface CameraBounds {
   minX: number;
   maxX: number;
@@ -130,8 +135,9 @@ export class Camera {
       targetZoom = baseZoom * speedMultiplier;
     }
 
-    // Apply the user's preferred zoom multiplier from settings.
-    targetZoom *= SETTINGS.cameraZoom;
+    // Pull the framing back (~50% more visible) then apply the user's
+    // preferred zoom multiplier from settings.
+    targetZoom *= ZOOM_OUT * SETTINGS.cameraZoom;
 
     // Clamp: never narrower than "fit the whole level", never closer than maxZoom.
     const minZoom = this.fitZoom();

@@ -948,6 +948,10 @@ function renderInstructions(): string {
           📋 I menyer: D-pad / spak för att flytta fokus, A för att välja.
           <kbd>Esc</kbd> under match → tillbaka till menyn.
         </p>
+        <p class="hint">
+          ⚙ Inställningar: tryck <kbd>Ctrl</kbd>+<kbd>S</kbd> under spelet för att
+          öppna den dolda inställningspanelen. <kbd>Esc</kbd> stänger.
+        </p>
       </section>
 
       <section>

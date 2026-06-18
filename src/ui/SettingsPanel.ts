@@ -97,9 +97,9 @@ export class SettingsPanel {
 
   constructor() {
     // Hidden mode — no visible launcher. The root is a full-screen backdrop
-    // overlay that is `display: none` until the secret combo is pressed.
-    // Win+S can't be captured by the browser (Windows Search swallows it),
-    // so Ctrl+Shift+S is the closest "Win+S-like" combo we can actually bind.
+    // overlay that is `display: none` until Ctrl+S (Cmd+S) is pressed. We
+    // preventDefault on that combo so the browser's "save page" dialog
+    // doesn't open underneath the panel while the game has focus.
     this.root = document.createElement("div");
     this.root.id = "settings-panel";
     this.root.style.cssText = `
@@ -142,7 +142,7 @@ export class SettingsPanel {
     title.style.cssText =
       "font-weight: 700; font-size: 14px; color: #6cc0ff; letter-spacing: 0.5px;";
     const hint = document.createElement("div");
-    hint.textContent = "Ctrl+Shift+S · Esc to close";
+    hint.textContent = "Ctrl+S · Esc to close";
     hint.style.cssText = "font-size: 10px; color: #666;";
     header.appendChild(title);
     header.appendChild(hint);
@@ -227,50 +227,14 @@ export class SettingsPanel {
 
     document.body.appendChild(this.root);
 
-    // Visible launcher — a gear button in the top-right corner so users
-    // discover the settings without needing to know the Ctrl+Shift+S
-    // combo. The keyboard shortcut still works for power users.
-    const launcher = document.createElement("button");
-    launcher.id = "settings-launcher";
-    launcher.type = "button";
-    launcher.setAttribute("aria-label", "Open settings");
-    launcher.textContent = "⚙";
-    launcher.style.cssText = `
-      position: fixed;
-      bottom: 12px;
-      right: 12px;
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: rgba(10, 10, 18, 0.7);
-      border: 1px solid #2a2a36;
-      color: #ddd;
-      font-size: 18px;
-      line-height: 1;
-      cursor: pointer;
-      z-index: 200;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 0.12s, transform 0.12s;
-    `;
-    launcher.onmouseenter = () => {
-      launcher.style.background = "rgba(40, 40, 56, 0.85)";
-      launcher.style.transform = "rotate(30deg)";
-    };
-    launcher.onmouseleave = () => {
-      launcher.style.background = "rgba(10, 10, 18, 0.7)";
-      launcher.style.transform = "rotate(0deg)";
-    };
-    launcher.onclick = () => this.toggleOpen();
-    document.body.appendChild(launcher);
-
+    // No visible launcher — the panel is opened only via the Ctrl+S shortcut.
     window.addEventListener("keydown", this.onKey);
   }
 
   private onKey = (e: KeyboardEvent) => {
-    // Ctrl+Shift+S (or Cmd+Shift+S) — toggle the hidden panel.
-    if (e.code === "KeyS" && e.shiftKey && (e.ctrlKey || e.metaKey)) {
+    // Ctrl+S (or Cmd+S) — toggle the hidden panel. preventDefault stops the
+    // browser's "save page" dialog from opening underneath it.
+    if (e.code === "KeyS" && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
       e.preventDefault();
       this.toggleOpen();
       return;
