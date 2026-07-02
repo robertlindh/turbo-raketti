@@ -12,23 +12,9 @@
 import Delaunator from "delaunator";
 import { Graphics } from "pixi.js";
 import type { Level, Point } from "../level/Level";
-import { LIGHT_X, LIGHT_Y, lighten, darken } from "./lowpoly";
-
-// ── colour helpers ──────────────────────────────────────────────────────────
-
-function hexToNum(hex: string): number {
-  return parseInt(hex.replace(/^#/, ""), 16) & 0xffffff;
-}
-
-/** Linear blend between two 0xRRGGBB colours. */
-function lerpColor(a: number, b: number, t: number): number {
-  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
-  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
-  const r = Math.round(ar + (br - ar) * t);
-  const g = Math.round(ag + (bg - ag) * t);
-  const bl = Math.round(ab + (bb - ab) * t);
-  return (r << 16) | (g << 8) | bl;
-}
+import { shadeByLight } from "./lowpoly";
+import { hexToNum, lerpColor } from "./color";
+import { mulberry32 } from "./rng";
 
 // ── geometry helpers ─────────────────────────────────────────────────────────
 
@@ -59,18 +45,10 @@ function distPointSeg(
   return { dist: Math.hypot(px - cx, py - cy), cx, cy };
 }
 
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 // ── mesh builder ──────────────────────────────────────────────────────────────
+
+/** Light swing on rock facets — subtle, so depth toning stays dominant. */
+const ROCK_SHADE = 0.16;
 
 /**
  * Build the faceted rock mesh for a level. Returns a `Graphics` in world
@@ -179,8 +157,7 @@ export function buildRockMesh(level: Level): Graphics {
     }
     let col = rampAt(1 - best / falloff);
     const nl = Math.hypot(ndx, ndy) || 1;
-    const dot = (ndx / nl) * LIGHT_X + (ndy / nl) * LIGHT_Y;
-    col = dot >= 0 ? lighten(col, dot * 0.16) : darken(col, -dot * 0.16);
+    col = shadeByLight(col, ndx / nl, ndy / nl, ROCK_SHADE);
 
     g.poly([ax, ay, bx, by, cx, cy]).fill({ color: col });
   }

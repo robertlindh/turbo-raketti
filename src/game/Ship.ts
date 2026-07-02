@@ -7,8 +7,7 @@ import { drawLowPolyHull } from "../render/lowpoly";
 import { SETTINGS } from "./Settings";
 
 export const SHIP_RADIUS = 1.0; // metres (collider radius)
-const SHIP_SPRITE_PX = { w: 13, h: 14 };
-const SHIP_SPRITE_METRES_PER_PX = 2.0 / 13; // 13px → 2.0m wide (matches collider diameter)
+const SHIP_SPRITE_METRES_PER_PX = 2.0 / 13; // 13px sprite space → 2.0m wide (matches collider diameter)
 
 export interface ShipConfig {
   x: number;
@@ -287,5 +286,3 @@ export class Ship {
     this.view.destroy({ children: true });
   }
 }
-
-export { SHIP_SPRITE_PX };

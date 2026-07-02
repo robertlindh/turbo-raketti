@@ -7,6 +7,8 @@ import { Container, Renderer, Sprite, Texture } from "pixi.js";
 import type { Level, LevelTheme, Point } from "./Level";
 import type { PhysicsWorld } from "../game/PhysicsWorld";
 import { buildRockMesh } from "../render/caveMesh";
+import { hexToRgb, withAlpha, darkenHex } from "../render/color";
+import { mulberry32 } from "../render/rng";
 
 /** Logical pixels per world metre used by the backdrop raster. */
 const PIXELS_PER_METRE = 8;
@@ -394,7 +396,7 @@ function drawCrystal(
   ctx.fillRect(px - 1, py - 1, 1, 1);
   ctx.fillRect(px, py - 1, 1, 1);
   ctx.fillRect(px + 1, py - 1, 1, 1);
-  ctx.fillStyle = darken(accent, 0.5);
+  ctx.fillStyle = darkenHex(accent, 0.5);
   ctx.fillRect(px, py, 1, 1);
   // Soft additive glow halo.
   ctx.globalCompositeOperation = "lighter";
@@ -419,41 +421,13 @@ function drawVignette(ctx: AnyCtx2D, W: number, H: number): void {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Geometry / colour helpers.
+// Colour helpers specific to this painter — everything generic lives in
+// render/color.ts and render/rng.ts.
 // ──────────────────────────────────────────────────────────────────────────
-
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function hexToRgb(hex: string): [number, number, number] {
-  let h = hex.replace(/^#/, "");
-  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
-  const n = parseInt(h, 16);
-  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
-}
 
 /** Scale a hex colour by brightness factor (0..1+) and return "r,g,b,1". */
 function tintRgb(hex: string, brightness: number): string {
   const [r, g, b] = hexToRgb(hex);
   const k = brightness / 255;
   return `${Math.min(255, Math.round(r * k + brightness * 0.3))},${Math.min(255, Math.round(g * k + brightness * 0.3))},${Math.min(255, Math.round(b * k + brightness * 0.3))},1`;
-}
-
-function withAlpha(hex: string, a: number): string {
-  const [r, g, b] = hexToRgb(hex);
-  return `rgba(${r},${g},${b},${a})`;
-}
-
-function darken(hex: string, k: number): string {
-  const [r, g, b] = hexToRgb(hex);
-  const f = (v: number) => Math.round(v * (1 - k));
-  return `#${f(r).toString(16).padStart(2, "0")}${f(g).toString(16).padStart(2, "0")}${f(b).toString(16).padStart(2, "0")}`;
 }

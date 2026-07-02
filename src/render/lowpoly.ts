@@ -7,37 +7,10 @@
 // the cave will hang their own facet builders off the same colour helpers.
 
 import type { Graphics } from "pixi.js";
+import { lighten, darken } from "./color";
 
-// ---------------------------------------------------------------------------
-// Colour ramp — flat per-facet shading is just the base hull colour mixed
-// toward white (lit faces) or black (shadowed faces) by a fixed factor.
-// Working in 0xRRGGBB integers so the results drop straight into Graphics
-// `.fill({ color })` without string round-trips.
-// ---------------------------------------------------------------------------
-
-/** Mix colour `c` toward `target` by `k` (0 = c, 1 = target). */
-function mix(c: number, target: number, k: number): number {
-  const r = (c >> 16) & 0xff;
-  const g = (c >> 8) & 0xff;
-  const b = c & 0xff;
-  const tr = (target >> 16) & 0xff;
-  const tg = (target >> 8) & 0xff;
-  const tb = target & 0xff;
-  const rr = Math.round(r + (tr - r) * k);
-  const gg = Math.round(g + (tg - g) * k);
-  const bb = Math.round(b + (tb - b) * k);
-  return (rr << 16) | (gg << 8) | bb;
-}
-
-/** Lighten toward white by `k`. */
-export function lighten(c: number, k: number): number {
-  return mix(c, 0xffffff, k);
-}
-
-/** Darken toward black by `k`. */
-export function darken(c: number, k: number): number {
-  return mix(c, 0x000000, k);
-}
+// Colour ramp math lives in render/color.ts — flat per-facet shading is just
+// the base colour mixed toward white (lit) or black (shadowed) by a factor.
 
 // ---------------------------------------------------------------------------
 // Ship hull — a faceted delta drawn in the legacy 13×14 "sprite-pixel" space,
@@ -85,6 +58,22 @@ export const LIGHT_Y = -0.83;
 /** Max ± brightness swing applied to a facet fully facing toward/away. */
 const SHADE_AMOUNT = 0.85;
 
+/**
+ * Shade `base` by how much a world-space direction (nx, ny) faces the fixed
+ * world light, swinging up to ±`amount` toward white/black. The single
+ * shading primitive every facet builder (hull, gates, cave) hangs off, so
+ * the whole scene reads as lit by one source.
+ */
+export function shadeByLight(
+  base: number,
+  nx: number,
+  ny: number,
+  amount: number,
+): number {
+  const d = nx * LIGHT_X + ny * LIGHT_Y; // −1 (away) … 1 (toward)
+  return d >= 0 ? lighten(base, d * amount) : darken(base, -d * amount);
+}
+
 /** Shade `base` by how much a facet (local tilt tx,ty) faces the light once
  *  rotated by (ca,sa) = (cos angle, sin angle). */
 function shade(
@@ -94,10 +83,7 @@ function shade(
   ca: number,
   sa: number,
 ): number {
-  const wx = tx * ca - ty * sa;
-  const wy = tx * sa + ty * ca;
-  const d = wx * LIGHT_X + wy * LIGHT_Y; // −1 (away) … 1 (toward)
-  return d >= 0 ? lighten(base, d * SHADE_AMOUNT) : darken(base, -d * SHADE_AMOUNT);
+  return shadeByLight(base, tx * ca - ty * sa, tx * sa + ty * ca, SHADE_AMOUNT);
 }
 
 /**
@@ -166,8 +152,7 @@ export function drawFacetRing(
     const a0 = (i / segments) * Math.PI * 2;
     const a1 = ((i + 1) / segments) * Math.PI * 2;
     const mid = (a0 + a1) / 2;
-    const d = Math.cos(mid) * LIGHT_X + Math.sin(mid) * LIGHT_Y;
-    const col = d >= 0 ? lighten(base, d * RING_SHADE) : darken(base, -d * RING_SHADE);
+    const col = shadeByLight(base, Math.cos(mid), Math.sin(mid), RING_SHADE);
     g.poly([
       Math.cos(a0) * innerR, Math.sin(a0) * innerR,
       Math.cos(a0) * outerR, Math.sin(a0) * outerR,

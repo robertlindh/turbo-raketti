@@ -1,4 +1,5 @@
 import type { Level, Point } from "../level/Level";
+import { withAlpha } from "../render/color";
 
 /**
  * A tiny canvas-based overview of the arena in the bottom-right of the
@@ -171,7 +172,7 @@ export class Minimap {
         if (isTarget) {
           const colour = targetColours![0];
           const hex = `#${colour.toString(16).padStart(6, "0")}`;
-          ctx.fillStyle = hexToRgba(hex, 0.28);
+          ctx.fillStyle = withAlpha(hex, 0.28);
           ctx.beginPath();
           ctx.arc(cx, cy, r * 1.4, 0, Math.PI * 2);
           ctx.fill();
@@ -261,13 +262,4 @@ export class Minimap {
   dispose(): void {
     this.canvas.remove();
   }
-}
-
-/** Quick #rrggbb → "rgba(r,g,b,a)" — small helper for tinting halos. */
-function hexToRgba(hex: string, alpha: number): string {
-  const h = hex.replace("#", "");
-  const n = parseInt(h.length === 3
-    ? h.split("").map((c) => c + c).join("")
-    : h, 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }

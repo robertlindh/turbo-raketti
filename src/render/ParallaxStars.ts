@@ -1,4 +1,5 @@
 import { Container, Graphics } from "pixi.js";
+import { mulberry32 } from "./rng";
 
 /**
  * A separate star layer that sits on top of the world but translates more
@@ -56,15 +57,4 @@ export class ParallaxStars extends Container {
 
 function rgbToHex(r: number, g: number, b: number): number {
   return (r << 16) | (g << 8) | b;
-}
-
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }

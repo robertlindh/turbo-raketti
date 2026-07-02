@@ -19,6 +19,7 @@ import { GlowLayer, ParticleSystem } from "../render/fx";
 import { loadLevel } from "../level/LevelLoader";
 import { getLevelById } from "../level/levels";
 import { getHighScores, formatTime } from "../app/highscores";
+import { GhostReplay } from "./GhostReplay";
 import type { Level } from "../level/Level";
 import { SETTINGS, onSettingChange, offSettingChange } from "./Settings";
 import { SettingsPanel } from "../ui/SettingsPanel";
@@ -222,6 +223,10 @@ export class Game {
   private replaySamples: Array<{ t: number; x: number; y: number; r: number }> = [];
   /** Seconds since the last replay sample was pushed. */
   private replayAccum = 0;
+
+  /** Ghost-race playback (time-trial): the current top score's recorded run,
+   *  replayed as a translucent "record holder" hull. Null in other modes. */
+  private ghost: GhostReplay | null = null;
 
   /** Online state — populated only when config.online is set. */
   private remoteShip: Graphics | null = null;
@@ -475,6 +480,7 @@ export class Game {
       this.buildRaceHud();
     }
     if (this.config.online) this.setupOnline();
+    this.setupGhost();
     new SettingsPanel();
     this.input.attach();
     this.gamepads.attach();
@@ -885,6 +891,18 @@ export class Game {
     drawLowPolyHull(this.remoteShip, this.remoteColor, this.remoteShip.rotation);
   }
 
+  /** Time-trial only — spawn a GhostReplay chasing target from the current
+   *  top score. Fire-and-forget: the ghost pops in once the (possibly
+   *  remote) replay resolves; the run starts fine without it. */
+  private setupGhost(): void {
+    if (this.config.mode !== "time-trial") return;
+    this.ghost = new GhostReplay(this.worldLayer);
+    void this.ghost.load(this.levelId, "time-trial").then((hasGhost) => {
+      // Flag in the HUD that there's a record run on the line.
+      if (hasGhost && this.raceHud) this.raceHud.best.textContent += " 👻";
+    });
+  }
+
   /** Tear down the Pixi canvas + all DOM the game added (scoreboard, settings
    *  panel, etc.) so the menu can render a clean slate. Safe to call twice. */
   dispose(): void {
@@ -899,6 +917,10 @@ export class Game {
     if (this.config.online) {
       void leaveRoom(this.config.online.roomId, this.config.online.role);
     }
+    // Ghost first — guards its async replay-load from resolving into a
+    // torn-down world layer.
+    this.ghost?.dispose();
+    this.ghost = null;
     this.stop();
     // Settings + resize listeners — remove BEFORE we destroy the renderer /
     // physics world, otherwise a stray resize or slider drag during teardown
@@ -951,6 +973,7 @@ export class Game {
     // Online: push our state + animate the remote ghost.
     this.publishLocalStateIfNeeded(dt);
     this.updateRemoteGhost(dt);
+    this.ghost?.update(this.matchElapsed);
     this.updateScoreboard();
     this.updateMinimap(dt);
     this.checkWinCondition();
