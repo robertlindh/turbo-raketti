@@ -20,6 +20,7 @@ import { loadLevel } from "../level/LevelLoader";
 import { getLevelById } from "../level/levels";
 import { getHighScores, formatTime } from "../app/highscores";
 import { GhostReplay } from "./GhostReplay";
+import type { WaterLayer } from "../render/water";
 import type { Level } from "../level/Level";
 import { SETTINGS, onSettingChange, offSettingChange } from "./Settings";
 import { SettingsPanel } from "../ui/SettingsPanel";
@@ -159,6 +160,9 @@ interface Player {
   ammo: Map<PowerUpType, number>;
   /** True while the special key is held this tick — for rising-edge detection. */
   specialPrev: boolean;
+  /** True while the ship's centre is inside a water zone — edge detection
+   *  triggers the surface splash on enter/exit. */
+  inWater: boolean;
 }
 
 interface ScoreView {
@@ -201,6 +205,9 @@ export class Game {
   private missiles: HomingMissile[] = [];
   private mines: MineEntity[] = [];
   private waterZones: Point[][] = [];
+  /** Animated water surface — null when the level has no pools. Game drives
+   *  it: update(dt) per frame, disturb() when a ship crosses the surface. */
+  private water: WaterLayer | null = null;
   /** Maps collider handles to whichever projectile owns them. Bullets and
    *  homing missiles both expose `alive`, `ownerIndex`, `color`, and `body`,
    *  so the collision handler can treat them uniformly. */
@@ -377,7 +384,8 @@ export class Game {
     const level = this.config.level
       ?? (levelId === "__draft" ? loadDraftLevel() : getLevelById(levelId));
     this.levelId = levelId;
-    loadLevel(renderer, this.physics, this.worldLayer, level);
+    const loaded = loadLevel(renderer, this.physics, this.worldLayer, level);
+    this.water = loaded.water;
     this.camera.setLevelBounds(level.bounds);
     this.waterZones = level.waterZones ?? [];
     // Keep a reference for the bot spawner — Game itself doesn't otherwise
@@ -515,6 +523,7 @@ export class Game {
       activePowerUps: new Map<PowerUpType, number>(),
       ammo: new Map<PowerUpType, number>(),
       specialPrev: false,
+      inWater: false,
     };
   }
 
@@ -974,6 +983,7 @@ export class Game {
     this.publishLocalStateIfNeeded(dt);
     this.updateRemoteGhost(dt);
     this.ghost?.update(this.matchElapsed);
+    this.water?.update(dt);
     this.updateScoreboard();
     this.updateMinimap(dt);
     this.checkWinCondition();
@@ -1236,6 +1246,24 @@ export class Game {
         for (const poly of this.waterZones) {
           if (pointInPolygon(pos, poly)) { inWater = true; break; }
         }
+
+        // Surface crossing — kick the spring surface at the entry point
+        // (down on the way in, up on the way out) and throw a droplet
+        // burst, both scaled by how hard the ship hit.
+        if (inWater !== p.inWater) {
+          const v = ship.body.linvel();
+          const speed = Math.hypot(v.x, v.y);
+          const punch = Math.abs(v.y) * 0.6 + speed * 0.15;
+          this.water?.disturb(pos.x, inWater ? punch : -punch * 0.7);
+          const drops = Math.min(16, Math.round(4 + speed * 0.4));
+          this.particles.explode(pos.x, pos.y, drops, 0xa0d8ff, {
+            speedMin: 3, speedMax: 8 + speed * 0.5,
+            lifeMin: 0.25, lifeMax: 0.55,
+            sizeMin: 0.8, sizeMax: 1.8,
+          });
+        }
+        p.inWater = inWater;
+
         if (inWater) {
           const v = ship.body.linvel();
           ship.body.setLinvel({ x: v.x * 0.93, y: v.y * 0.93 }, true);
@@ -1247,6 +1275,12 @@ export class Game {
               (Math.random() - 0.5) * 4, -3 - Math.random() * 2,
               0xa0d8ff,
             );
+          }
+          // Wake — moving fast near the surface keeps it churning above you.
+          const speed = Math.hypot(v.x, v.y);
+          const surfY = this.water?.surfaceYAt(pos.x);
+          if (speed > 6 && surfY != null && pos.y - surfY < 3.5 && Math.random() < 0.35) {
+            this.water?.disturb(pos.x, (Math.random() - 0.3) * speed * 0.18);
           }
         }
       }

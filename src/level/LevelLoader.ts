@@ -7,6 +7,7 @@ import { Container, Renderer, Sprite, Texture } from "pixi.js";
 import type { Level, LevelTheme, Point } from "./Level";
 import type { PhysicsWorld } from "../game/PhysicsWorld";
 import { buildRockMesh } from "../render/caveMesh";
+import { WaterLayer } from "../render/water";
 import { hexToRgb, withAlpha, darkenHex } from "../render/color";
 import { mulberry32 } from "../render/rng";
 
@@ -19,6 +20,9 @@ type AnyCtx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export interface LoadedLevel {
   /** Container holding the atmosphere + vector rock mesh + decoration overlay. */
   view: Container;
+  /** Animated water surface, or null when the level has no water zones.
+   *  The game drives it: update(dt) each frame, disturb() on impacts. */
+  water: WaterLayer | null;
   /** The Level used to build this. */
   level: Level;
 }
@@ -39,10 +43,10 @@ export function loadLevel(
   createColliders(physics, level);
 
   // 2. Build the visuals (raster atmosphere + vector rock mesh + overlay).
-  const view = buildLevelView(level);
+  const { view, water } = buildLevelParts(level);
   parent.addChild(view);
 
-  return { view, level };
+  return { view, water, level };
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -86,21 +90,27 @@ function createColliders(physics: PhysicsWorld, level: Level): void {
  * level editor for live preview, and internally by `loadLevel`.
  */
 export function renderLevelBackdrop(level: Level): Container {
-  return buildLevelView(level);
+  // The editor never ticks the WaterLayer, so it renders as a correct
+  // static pool at spring-rest.
+  return buildLevelParts(level).view;
 }
 
 /**
  * Assemble the full cave view: a baked atmosphere sprite (sky + nebula +
- * stars) at the back, the vector low-poly rock mesh in the middle, and a baked
- * overlay sprite (water + decorations + vignette) on top so crystals still sit
- * above the rock. Shared by the game (`loadLevel`) and the editor preview.
+ * stars) at the back, the vector low-poly rock mesh, the animated water
+ * surface, and a baked overlay sprite (decorations + vignette) on top so
+ * crystals still sit above the rock. Shared by the game (`loadLevel`) and
+ * the editor preview.
  */
-function buildLevelView(level: Level): Container {
+function buildLevelParts(level: Level): { view: Container; water: WaterLayer | null } {
   const c = new Container();
   c.addChild(buildAtmosphereSprite(level));
   c.addChild(buildRockMesh(level));
+  const zones = level.waterZones ?? [];
+  const water = zones.length > 0 ? new WaterLayer(zones) : null;
+  if (water) c.addChild(water);
   c.addChild(buildOverlaySprite(level));
-  return c;
+  return { view: c, water };
 }
 
 /** Allocate a backdrop-resolution canvas + 2D context for `level`. */
@@ -139,14 +149,13 @@ function buildAtmosphereSprite(level: Level): Sprite {
   return spriteFromCanvas(canvas, level.bounds);
 }
 
-/** Front layer — transparent except water, decorations and the vignette,
- *  so they read on top of the vector rock. */
+/** Front layer — transparent except decorations and the vignette, so they
+ *  read on top of the vector rock. Water is a live WaterLayer, not baked. */
 function buildOverlaySprite(level: Level): Sprite {
   const { bounds } = level;
   const { canvas, ctx, W, H } = makeLevelCanvas(level);
   const wx = (x: number) => (x - bounds.minX) * PIXELS_PER_METRE;
   const wy = (y: number) => (y - bounds.minY) * PIXELS_PER_METRE;
-  drawWaterZones(ctx, level, wx, wy);
   drawDecorations(ctx, level, wx, wy);
   drawVignette(ctx, W, H);
   return spriteFromCanvas(canvas, bounds);
@@ -202,40 +211,6 @@ function drawStars(
       ctx.fillRect(x, y + 1, 1, 1);
     }
   }
-}
-
-function drawWaterZones(
-  ctx: AnyCtx2D,
-  level: Level,
-  wx: (x: number) => number,
-  wy: (y: number) => number,
-): void {
-  if (!level.waterZones || level.waterZones.length === 0) return;
-  ctx.save();
-  for (const poly of level.waterZones) {
-    if (poly.length < 3) continue;
-    // Filled body — semi-transparent teal.
-    ctx.beginPath();
-    ctx.moveTo(wx(poly[0].x), wy(poly[0].y));
-    for (let i = 1; i < poly.length; i++) ctx.lineTo(wx(poly[i].x), wy(poly[i].y));
-    ctx.closePath();
-    ctx.fillStyle = "rgba(56, 124, 200, 0.55)";
-    ctx.fill();
-    // Slight rim of lighter cyan along the top edge.
-    ctx.strokeStyle = "rgba(160, 220, 255, 0.55)";
-    ctx.lineWidth = 0.6;
-    ctx.stroke();
-    // A horizontal "shimmer" line a few px below the surface.
-    ctx.strokeStyle = "rgba(200, 240, 255, 0.18)";
-    ctx.lineWidth = 0.3;
-    ctx.beginPath();
-    ctx.moveTo(wx(poly[0].x), wy(poly[0].y) + 1.4);
-    for (let i = 1; i < poly.length; i++) {
-      ctx.lineTo(wx(poly[i].x), wy(poly[i].y) + 1.4);
-    }
-    ctx.stroke();
-  }
-  ctx.restore();
 }
 
 function drawDecorations(
