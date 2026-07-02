@@ -107,7 +107,7 @@ function buildLevelParts(level: Level): { view: Container; water: WaterLayer | n
   c.addChild(buildAtmosphereSprite(level));
   c.addChild(buildRockMesh(level));
   const zones = level.waterZones ?? [];
-  const water = zones.length > 0 ? new WaterLayer(zones) : null;
+  const water = zones.length > 0 ? new WaterLayer(zones, level) : null;
   if (water) c.addChild(water);
   c.addChild(buildOverlaySprite(level));
   return { view: c, water };

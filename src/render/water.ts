@@ -13,7 +13,7 @@
 // water renders as a correct static pool.
 
 import { Container, Graphics } from "pixi.js";
-import type { Point } from "../level/Level";
+import type { Level, Point } from "../level/Level";
 
 /** Horizontal spacing between surface spring points (metres). */
 const SAMPLE_STEP = 1.2;
@@ -50,11 +50,13 @@ export class WaterLayer extends Container {
   private g = new Graphics();
   private t = 0;
 
-  constructor(waterZones: Point[][]) {
+  constructor(waterZones: Point[][], level: Level) {
     super();
     this.addChild(this.g);
+    // The rock the water must sit in: cave boundary + obstacle islands.
+    const solids: Point[][] = [level.boundary, ...level.obstacles];
     for (const poly of waterZones) {
-      const zone = buildZone(poly);
+      const zone = buildZone(poly, solids);
       if (zone) this.zones.push(zone);
     }
     this.redraw(); // static rest state (editor preview / pre-first-update)
@@ -154,11 +156,31 @@ function nearestIndex(z: Zone, x: number): number {
   return Math.max(0, Math.min(z.xs.length - 1, i));
 }
 
-/** Sample a water polygon into surface/floor columns. For each x step, cast
- *  a vertical line through the polygon: the topmost hit is the surface, the
- *  bottommost is the floor. Concave pools resolve to their outer envelope,
- *  which is right for how the zones are authored (top edge + bottom edge). */
-function buildZone(poly: Point[]): Zone | null {
+/** How far past the rock line the fill extends (m) — hides hairline seams
+ *  between the water fill and the rock mesh at facet edges. */
+const ROCK_OVERFILL = 0.3;
+/** Shoreline length (in samples) when a pool ends over open floor — the
+ *  surface eases down to meet the rock instead of cutting off mid-air. */
+const SHORE_SAMPLES = 4;
+
+/** All y-intersections of the vertical line at `x` with a polygon's edges. */
+function columnHits(poly: Point[], x: number, out: number[]): void {
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[j], b = poly[i];
+    if ((a.x <= x) === (b.x <= x)) continue; // edge doesn't span this column
+    out.push(a.y + ((x - a.x) / (b.x - a.x)) * (b.y - a.y));
+  }
+}
+
+/**
+ * Sample a water polygon into surface/floor columns, aligned to the cave.
+ * The authored polygon supplies the surface height and horizontal extent;
+ * the *bottom* of each column comes from the actual rock geometry — the
+ * first boundary/obstacle edge below the surface — so the pool always sits
+ * exactly in its basin regardless of how sloppily the zone was drawn.
+ * Pool ends over open floor get a short shoreline taper.
+ */
+function buildZone(poly: Point[], solids: Point[][]): Zone | null {
   if (poly.length < 3) return null;
   let minX = Infinity, maxX = -Infinity;
   for (const p of poly) {
@@ -173,24 +195,58 @@ function buildZone(poly: Point[]): Zone | null {
   const xs: number[] = [];
   const restY: number[] = [];
   const bottomY: number[] = [];
+  const hits: number[] = [];
   for (let x = x0; x <= x1 + 1e-6; x += SAMPLE_STEP) {
-    let top = Infinity, bottom = -Infinity;
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const a = poly[j], b = poly[i];
-      if ((a.x <= x) === (b.x <= x)) continue; // edge doesn't span this column
-      const y = a.y + ((x - a.x) / (b.x - a.x)) * (b.y - a.y);
+    // Surface + authored bottom from the water polygon itself.
+    hits.length = 0;
+    columnHits(poly, x, hits);
+    if (hits.length < 2) continue;
+    let top = Infinity, authoredBottom = -Infinity;
+    for (const y of hits) {
       if (y < top) top = y;
-      if (y > bottom) bottom = y;
+      if (y > authoredBottom) authoredBottom = y;
     }
-    if (top === Infinity || bottom <= top) continue;
+
+    // Rock line: the first solid edge below the surface in this column —
+    // the cave floor, or an obstacle top if an island pokes into the pool.
+    let rock = Infinity;
+    for (const solid of solids) {
+      hits.length = 0;
+      columnHits(solid, x, hits);
+      for (const y of hits) {
+        if (y > top + 0.05 && y < rock) rock = y;
+      }
+    }
+    // Fill down into the rock slightly; fall back to the authored bottom
+    // where no rock exists below (shouldn't happen in a closed cave).
+    const bottom = rock !== Infinity ? rock + ROCK_OVERFILL : authoredBottom;
+    if (bottom <= top) continue;
     xs.push(x);
     restY.push(top);
     bottomY.push(bottom);
   }
   if (xs.length < 3) return null;
+
+  // Shoreline taper — where a pool END sits over open floor (deep water at
+  // the last column), ease the surface down to the rock over a few samples
+  // so the pool reads as filling its basin instead of ending in a wall of
+  // water. Ends that already meet rock (depth ≈ 0) are left alone.
+  const n = xs.length;
+  const shore = Math.min(SHORE_SAMPLES, Math.floor(n / 3));
+  const taper = (idx: number, w: number) => {
+    const floor = bottomY[idx] - ROCK_OVERFILL;
+    const depth = floor - restY[idx];
+    if (depth > 0.2) restY[idx] = floor - depth * w;
+  };
+  for (let i = 0; i < shore; i++) {
+    const w = (i + 0.5) / shore; // 0 at the tip → 1 pool-inward
+    taper(i, w);
+    taper(n - 1 - i, w);
+  }
+
   return {
     xs, restY, bottomY,
-    offset: new Array(xs.length).fill(0),
-    vel: new Array(xs.length).fill(0),
+    offset: new Array(n).fill(0),
+    vel: new Array(n).fill(0),
   };
 }
