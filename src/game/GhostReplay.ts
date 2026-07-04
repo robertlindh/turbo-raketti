@@ -43,8 +43,11 @@ export class GhostReplay {
       board = getHighScores(levelId, mode);
     }
     if (this.disposed) return false;
-    const best = board[0];
-    if (!best?.replay || best.replay.length < 2) return false;
+    // The best run that actually has a recording. Boards are sorted best-first,
+    // so this is the fastest replayable ghost — and a legacy top score with no
+    // replay (saved before ghost telemetry existed) no longer blocks it.
+    const best = board.find((e) => e.replay && e.replay.length >= 2);
+    if (!best?.replay) return false;
 
     this.replay = best.replay;
     const g = new Graphics();
