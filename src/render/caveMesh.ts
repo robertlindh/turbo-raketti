@@ -68,6 +68,27 @@ export function buildRockMesh(level: Level): Graphics {
     return false;
   };
 
+  // 0. Exact-silhouette underlay in the deepest tone. The facet field is
+  //    clipped triangle-by-triangle and only approximates the polygon edge —
+  //    dropped edge-crossing triangles leave hairline gaps that now sit over
+  //    the bright WaterLayer (drawn beneath the rock). Fill the true rock
+  //    region first — outer rect with the cave interior cut out, plus the
+  //    obstacle islands — so the rock is opaque to its exact edge no matter
+  //    what the facets do.
+  const deepRock = hexToNum(theme.rockDeepest);
+  const boundaryFlat: number[] = [];
+  for (const p of boundary) boundaryFlat.push(p.x, p.y);
+  g.rect(minX, minY, maxX - minX, maxY - minY)
+    .fill({ color: deepRock })
+    .poly(boundaryFlat)
+    .cut();
+  for (const ob of obstacles) {
+    if (ob.length < 3) continue;
+    const fp: number[] = [];
+    for (const p of ob) fp.push(p.x, p.y);
+    g.poly(fp).fill({ color: deepRock });
+  }
+
   const pts: number[] = [];
   const push = (x: number, y: number) => pts.push(x, y);
 
