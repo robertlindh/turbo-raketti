@@ -1,5 +1,6 @@
 import { Container } from "pixi.js";
 import type { Level, Point } from "../level/Level";
+import { pointInPolygon } from "../level/geometry";
 import {
   ALL_TYPES, PICKUP_RADIUS, PowerUpEntity, POWERUP_DEFS,
   type PowerUpType,
@@ -90,10 +91,10 @@ export class PowerUpSystem {
     for (let attempt = 0; attempt < 30; attempt++) {
       const x = b.minX + margin + Math.random() * (b.maxX - b.minX - margin * 2);
       const y = b.minY + margin + Math.random() * (b.maxY - b.minY - margin * 2);
-      if (!pointInPolygon({ x, y }, this.boundary)) continue;
+      if (!pointInPolygon(x, y, this.boundary)) continue;
       let blocked = false;
       for (const obs of this.obstacles) {
-        if (pointInPolygon({ x, y }, obs)) { blocked = true; break; }
+        if (pointInPolygon(x, y, obs)) { blocked = true; break; }
       }
       if (blocked) continue;
       // Try to keep away from any other active power-up so they don't overlap.
@@ -108,20 +109,6 @@ export class PowerUpSystem {
     }
     return null;
   }
-}
-
-/** Standard ray-casting point-in-polygon test. */
-function pointInPolygon(p: Point, poly: Point[]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x, yi = poly[i].y;
-    const xj = poly[j].x, yj = poly[j].y;
-    const intersect =
-      yi > p.y !== yj > p.y &&
-      p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
 }
 
 /** Glyph + colour exported so HUD can render matching badges. */

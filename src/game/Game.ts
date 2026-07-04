@@ -21,6 +21,7 @@ import { getLevelById } from "../level/levels";
 import { getHighScores, formatTime } from "../app/highscores";
 import { GhostReplay } from "./GhostReplay";
 import type { WaterLayer } from "../render/water";
+import { pointInPolygon } from "../level/geometry";
 import type { Level } from "../level/Level";
 import { SETTINGS, onSettingChange, offSettingChange } from "./Settings";
 import { SettingsPanel } from "../ui/SettingsPanel";
@@ -91,20 +92,6 @@ function loadDraftLevel(): Level {
  *  samples without any visible loss of fidelity. */
 function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
-}
-
-/** Standard ray-casting point-in-polygon test. */
-function pointInPolygon(p: { x: number; y: number }, poly: Point[]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x, yi = poly[i].y;
-    const xj = poly[j].x, yj = poly[j].y;
-    const intersect =
-      yi > p.y !== yj > p.y &&
-      p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
 }
 
 /** Shortest distance from `p` to any edge of the polygon. Used to gate bot
@@ -1244,7 +1231,7 @@ export class Game {
         const pos = ship.body.translation();
         let inWater = false;
         for (const poly of this.waterZones) {
-          if (pointInPolygon(pos, poly)) { inWater = true; break; }
+          if (pointInPolygon(pos.x, pos.y, poly)) { inWater = true; break; }
         }
 
         // Surface crossing — kick the spring surface at the entry point
@@ -1708,11 +1695,11 @@ export class Game {
       const y = b.minY + margin + Math.random() * (b.maxY - b.minY - margin * 2);
       const p = { x, y };
       // Inside the cave boundary?
-      if (!pointInPolygon(p, level.boundary)) continue;
+      if (!pointInPolygon(p.x, p.y, level.boundary)) continue;
       // Not inside any obstacle?
       let blocked = false;
       for (const obs of level.obstacles) {
-        if (pointInPolygon(p, obs)) { blocked = true; break; }
+        if (pointInPolygon(p.x, p.y, obs)) { blocked = true; break; }
       }
       if (blocked) continue;
       // Far enough from every polygon edge that the collider clears?

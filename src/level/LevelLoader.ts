@@ -105,10 +105,13 @@ export function renderLevelBackdrop(level: Level): Container {
 function buildLevelParts(level: Level): { view: Container; water: WaterLayer | null } {
   const c = new Container();
   c.addChild(buildAtmosphereSprite(level));
-  c.addChild(buildRockMesh(level));
+  // Water sits UNDER the rock: its fill overshoots into the walls and floor,
+  // and the opaque rock mesh crops it to exactly the basin — the waterline
+  // meets the rock with no seams regardless of surface animation.
   const zones = level.waterZones ?? [];
   const water = zones.length > 0 ? new WaterLayer(zones, level) : null;
   if (water) c.addChild(water);
+  c.addChild(buildRockMesh(level));
   c.addChild(buildOverlaySprite(level));
   return { view: c, water };
 }

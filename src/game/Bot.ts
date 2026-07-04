@@ -11,6 +11,7 @@ import type { Renderer } from "pixi.js";
 import type { Container } from "pixi.js";
 import type { PhysicsWorld } from "./PhysicsWorld";
 import type { Level, Point } from "../level/Level";
+import { pointInPolygon } from "../level/geometry";
 import { Ship, SHIP_RADIUS } from "./Ship";
 import type { ShipInput } from "./Input";
 
@@ -119,10 +120,10 @@ export class Bot {
       const x = b.minX + margin + Math.random() * (b.maxX - b.minX - margin * 2);
       const y = b.minY + margin + Math.random() * (b.maxY - b.minY - margin * 2);
       const p = { x, y };
-      if (!pointInPolygon(p, this.boundary)) continue;
+      if (!pointInPolygon(p.x, p.y, this.boundary)) continue;
       let blocked = false;
       for (const obs of this.obstacles) {
-        if (pointInPolygon(p, obs)) { blocked = true; break; }
+        if (pointInPolygon(p.x, p.y, obs)) { blocked = true; break; }
       }
       if (!blocked) return p;
     }
@@ -135,21 +136,6 @@ export class Bot {
     this.alive = false;
     this.ship.dispose(physics);
   }
-}
-
-/** Standard ray-casting point-in-polygon test (copy of the one in
- *  PowerUpSystem; kept local to avoid a cross-system dependency). */
-function pointInPolygon(p: Point, poly: Point[]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x, yi = poly[i].y;
-    const xj = poly[j].x, yj = poly[j].y;
-    const intersect =
-      yi > p.y !== yj > p.y &&
-      p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
 }
 
 /** Re-export so callers don't need to import from Ship.ts. */

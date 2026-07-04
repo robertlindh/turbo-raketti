@@ -15,22 +15,9 @@ import type { Level, Point } from "../level/Level";
 import { shadeByLight } from "./lowpoly";
 import { hexToNum, lerpColor } from "./color";
 import { mulberry32 } from "./rng";
+import { pointInPolygon } from "../level/geometry";
 
 // ── geometry helpers ─────────────────────────────────────────────────────────
-
-/** Even-odd ray cast — winding-agnostic, which suits both CCW boundary and
- *  CW obstacles authored "as seen on screen". */
-function pointInPoly(x: number, y: number, poly: Point[]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x, yi = poly[i].y;
-    const xj = poly[j].x, yj = poly[j].y;
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
 
 /** Distance from (px,py) to segment a→b, plus the closest point on it. */
 function distPointSeg(
@@ -76,8 +63,8 @@ export function buildRockMesh(level: Level): Graphics {
 
   // A point is rock if it's outside the cave interior, or inside an island.
   const inRock = (x: number, y: number): boolean => {
-    if (!pointInPoly(x, y, boundary)) return true;
-    for (const ob of obstacles) if (pointInPoly(x, y, ob)) return true;
+    if (!pointInPolygon(x, y, boundary)) return true;
+    for (const ob of obstacles) if (pointInPolygon(x, y, ob)) return true;
     return false;
   };
 
