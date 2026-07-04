@@ -36,7 +36,7 @@ import { MineEntity } from "./Mine";
 import { RacingSystem } from "./Racing";
 import type { Point } from "../level/Level";
 import { DecalLayer, WreckageLayer } from "../render/VisualFx";
-import { ParallaxStars } from "../render/ParallaxStars";
+import type { StarLayers } from "../render/starLayers";
 import { CrtOverlay } from "../ui/CrtOverlay";
 import { SplitScreen } from "../render/SplitScreen";
 import { Minimap } from "../ui/Minimap";
@@ -176,7 +176,9 @@ export class Game {
   private racing: RacingSystem | null = null;
   private decals!: DecalLayer;
   private wreckage!: WreckageLayer;
-  private starfield!: ParallaxStars;
+  /** Parallax star field inside the level view — repositioned per camera
+   *  each render pass so depth layers slide against each other in flight. */
+  private stars: StarLayers | null = null;
   private crt!: CrtOverlay;
   private splitscreen!: SplitScreen;
   private minimap!: Minimap;
@@ -373,6 +375,7 @@ export class Game {
     this.levelId = levelId;
     const loaded = loadLevel(renderer, this.physics, this.worldLayer, level);
     this.water = loaded.water;
+    this.stars = loaded.stars;
     this.camera.setLevelBounds(level.bounds);
     // Keep a reference for the bot spawner — Game itself doesn't otherwise
     // need to know the full Level after init.
@@ -409,15 +412,6 @@ export class Game {
     if (wantRacing && level.checkpoints && level.checkpoints.length > 0) {
       this.racing = new RacingSystem(this.worldLayer, level, numPlayersForRacing);
     }
-
-    // Parallax stars live on the stage *behind* the world container, with
-    // their own slower camera offset. They sit at z=0 so the world's backdrop
-    // covers most of them — they only peek through at the edges and between
-    // cave openings, giving a sense of depth.
-    const vp0 = this.app.canvas;
-    this.starfield = new ParallaxStars(vp0.clientWidth || window.innerWidth, vp0.clientHeight || window.innerHeight);
-    this.starfield.parallaxFactor = 0.18;
-    this.app.stage.addChildAt(this.starfield, 0);
 
     // CRT overlay — togglable via settings.
     this.crt = new CrtOverlay();
@@ -1847,8 +1841,6 @@ export class Game {
       useSplit = wasSplit ? dist > exit : dist > enter;
     }
 
-    const canvas = this.app.canvas;
-
     if (useSplit) {
       this.splitscreen.setActive(true);
       this.worldRoot.renderable = false;
@@ -1859,14 +1851,10 @@ export class Game {
       // Dynamic camera — follows the players, auto-zooms.
       this.camera.follow(targets);
       this.camera.apply();
+      // Parallax stars track this camera. (Split-screen sets them per half
+      // inside renderSplit instead.)
+      this.stars?.update(this.camera.x, this.camera.y);
     }
-
-    // Parallax star field — sits behind the world and drifts slower than
-    // the camera. Resize-aware so it tracks the actual viewport.
-    this.starfield.update(
-      this.camera.x, this.camera.y, this.camera.zoom,
-      canvas.clientWidth, canvas.clientHeight,
-    );
 
     // Apply camera shake to worldRoot (outside camera transform so screen-space).
     if (this.cameraShake.amp > 0) {
@@ -1891,6 +1879,9 @@ export class Game {
       this.worldLayer.scale.set(zoom, zoom);
       this.worldLayer.x = half.w / 2 - ship.x * zoom;
       this.worldLayer.y = half.h / 2 - ship.y * zoom;
+      // Each half re-aims the parallax layers at its own camera before its
+      // render pass, so both players get correct depth for their view.
+      this.stars?.update(ship.x, ship.y);
       // Apply shake on worldRoot every render.
       const amp = this.cameraShake.amp;
       this.worldRoot.x = (Math.random() * 2 - 1) * amp * 12;

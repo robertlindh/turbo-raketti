@@ -8,6 +8,7 @@ import type { Level, LevelTheme, Point } from "./Level";
 import type { PhysicsWorld } from "../game/PhysicsWorld";
 import { buildRockMesh } from "../render/caveMesh";
 import { WaterLayer } from "../render/water";
+import { StarLayers } from "../render/starLayers";
 import { hexToRgb, withAlpha, darkenHex } from "../render/color";
 import { mulberry32 } from "../render/rng";
 
@@ -23,6 +24,9 @@ export interface LoadedLevel {
   /** Animated water surface, or null when the level has no water zones.
    *  The game drives it: update(dt) each frame, disturb() on impacts. */
   water: WaterLayer | null;
+  /** Parallax star field — the game repositions it per camera each render
+   *  pass via update(camX, camY). */
+  stars: StarLayers;
   /** The Level used to build this. */
   level: Level;
 }
@@ -43,10 +47,10 @@ export function loadLevel(
   createColliders(physics, level);
 
   // 2. Build the visuals (raster atmosphere + vector rock mesh + overlay).
-  const { view, water } = buildLevelParts(level);
+  const { view, water, stars } = buildLevelParts(level);
   parent.addChild(view);
 
-  return { view, water, level };
+  return { view, water, stars, level };
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -102,9 +106,15 @@ export function renderLevelBackdrop(level: Level): Container {
  * crystals still sit above the rock. Shared by the game (`loadLevel`) and
  * the editor preview.
  */
-function buildLevelParts(level: Level): { view: Container; water: WaterLayer | null } {
+function buildLevelParts(level: Level): {
+  view: Container; water: WaterLayer | null; stars: StarLayers;
+} {
   const c = new Container();
   c.addChild(buildAtmosphereSprite(level));
+  // Parallax stars over the sky gradient — cropped by the rock like the
+  // water, so they only show through the cave interior.
+  const stars = new StarLayers(level);
+  c.addChild(stars);
   // Water sits UNDER the rock: its fill overshoots into the walls and floor,
   // and the opaque rock mesh crops it to exactly the basin — the waterline
   // meets the rock with no seams regardless of surface animation.
@@ -113,7 +123,7 @@ function buildLevelParts(level: Level): { view: Container; water: WaterLayer | n
   if (water) c.addChild(water);
   c.addChild(buildRockMesh(level));
   c.addChild(buildOverlaySprite(level));
-  return { view: c, water };
+  return { view: c, water, stars };
 }
 
 /** Allocate a backdrop-resolution canvas + 2D context for `level`. */
