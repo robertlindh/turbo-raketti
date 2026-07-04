@@ -35,16 +35,13 @@ const SPREAD_PASSES = 2;
 /** Hard clamp on surface displacement (m) so splashes can't explode. */
 const MAX_OFFSET = 1.4;
 
-/** How far below the deepest authored point the fill extends (m). The rock
- *  mesh covers everything below the actual floor. */
-const DEEP_MARGIN = 8;
-/** Extra surface samples pushed into a wall at each wall-end (hidden by the
+/** Extra surface samples pushed into a wall at each end (hidden by the
  *  rock, so the visible waterline meets the wall exactly). */
 const WALL_EXTEND_SAMPLES = 3;
-/** Shoreline length (in samples) when a pool ends over open floor. */
-const SHORE_SAMPLES = 4;
-/** How far under the floor line the shoreline tucks (m). */
-const SHORE_TUCK = 1.0;
+/** How far the waterline may extend past the authored zone to reach the
+ *  nearest wall (m). Water finds its level — the authored polygon only says
+ *  roughly where the pool is; the basin decides where it ends. */
+const MAX_EXTEND = 60;
 
 const BODY_COLOR = 0x387cc8;
 const BODY_ALPHA = 0.55;
@@ -93,6 +90,17 @@ export class WaterLayer extends Container {
     if (!z) return null;
     const i = nearestIndex(z, x);
     return z.restY[i] + z.offset[i];
+  }
+
+  /** Is the world point under a pool's live surface? This is the single
+   *  source of truth for "in water" — Game's drag physics uses it, so the
+   *  slowdown zone always matches the rendered pool (including the
+   *  wall-to-wall extension and the waves themselves). */
+  contains(x: number, y: number): boolean {
+    const z = this.zoneAt(x);
+    if (!z) return false;
+    const i = nearestIndex(z, x);
+    return y >= z.restY[i] + z.offset[i] && y <= z.deepY;
   }
 
   /** Kick the surface at world x with a vertical impulse (m/s). Positive =
@@ -174,31 +182,19 @@ function nearestIndex(z: Zone, x: number): number {
 }
 
 /**
- * Sample a water polygon into surface columns. The authored polygon supplies
- * the surface height and horizontal extent; the fill's bottom is a flat deep
- * line the rock covers. Each end is classified against the level geometry:
- * ends inside a wall extend a few hidden samples into it so the waterline
- * meets the rock exactly; ends over open floor get a shoreline taper that
- * dives under the floor line.
+ * Build a zone from a water polygon: water finds its level. The authored
+ * polygon only supplies WHERE the pool is and roughly how high it sits — the
+ * rest surface becomes one flat horizontal waterline (the median of the
+ * authored top edge), extended in both directions until it enters rock, so
+ * the pool always fills its basin wall-to-wall. The fill's bottom is a flat
+ * deep line the rock mesh covers.
  */
 function buildZone(poly: Point[], level: Level): Zone | null {
   if (poly.length < 3) return null;
-  const solids: Point[][] = [level.boundary, ...level.obstacles];
   const inRock = (x: number, y: number): boolean => {
     if (!pointInPolygon(x, y, level.boundary)) return true;
     for (const ob of level.obstacles) if (pointInPolygon(x, y, ob)) return true;
     return false;
-  };
-  /** First solid edge below `above` in this column, or null. */
-  const hits: number[] = [];
-  const floorAt = (x: number, above: number): number | null => {
-    let rock = Infinity;
-    for (const solid of solids) {
-      hits.length = 0;
-      verticalHits(solid, x, hits);
-      for (const y of hits) if (y > above + 0.05 && y < rock) rock = y;
-    }
-    return rock === Infinity ? null : rock;
   };
 
   let minX = Infinity, maxX = -Infinity;
@@ -211,54 +207,47 @@ function buildZone(poly: Point[], level: Level): Zone | null {
   const x1 = maxX - SAMPLE_STEP * 0.4;
   if (x1 <= x0) return null;
 
-  const xs: number[] = [];
-  const restY: number[] = [];
-  let deepest = -Infinity;
+  // Sample the authored top edge, then flatten to its median: that's the
+  // pool's water level. (Median, not min/max, so one stray vertex in a
+  // hand-drawn zone can't raise or sink the whole pool.)
+  const hits: number[] = [];
+  const tops: number[] = [];
   for (let x = x0; x <= x1 + 1e-6; x += SAMPLE_STEP) {
     hits.length = 0;
     verticalHits(poly, x, hits);
     if (hits.length < 2) continue;
-    let top = Infinity, bottom = -Infinity;
-    for (const y of hits) {
-      if (y < top) top = y;
-      if (y > bottom) bottom = y;
-    }
-    xs.push(x);
-    restY.push(top);
-    if (bottom > deepest) deepest = bottom;
+    tops.push(Math.min(...hits));
   }
-  if (xs.length < 3) return null;
+  if (tops.length < 3) return null;
+  const sorted = tops.slice().sort((a, b) => a - b);
+  const waterLevel = sorted[Math.floor(sorted.length / 2)];
 
-  // Ends: probe just past each tip at surface depth. Inside rock → a wall:
-  // push hidden samples into it. Open → shoreline: taper the last samples
-  // down to just under the floor so the rock crops a clean beach.
-  const finishEnd = (tipIdx: number, dir: -1 | 1): void => {
-    const tipX = xs[tipIdx];
-    const surfY = restY[tipIdx];
-    if (inRock(tipX + dir * SAMPLE_STEP, surfY + 0.4)) {
-      for (let k = 1; k <= WALL_EXTEND_SAMPLES; k++) {
-        if (dir === 1) { xs.push(tipX + k * SAMPLE_STEP); restY.push(surfY); }
-        else { xs.unshift(tipX - k * SAMPLE_STEP); restY.unshift(surfY); }
-      }
-    } else {
-      const n = xs.length;
-      const shore = Math.min(SHORE_SAMPLES, Math.floor(n / 3));
-      for (let k = 0; k < shore; k++) {
-        const i = dir === 1 ? n - 1 - k : tipIdx + k;
-        const w = 1 - (k + 0.5) / shore; // 1 at the tip → 0 pool-inward
-        const floor = floorAt(xs[i], restY[i] - 2);
-        const target = (floor ?? restY[i] + 3) + SHORE_TUCK;
-        restY[i] += (target - restY[i]) * w;
-      }
-    }
-  };
-  finishEnd(xs.length - 1, 1);
-  finishEnd(0, -1);
+  // Walk outward from the authored extent until the waterline enters rock,
+  // then push a few hidden anchor samples into it. If there's no rock within
+  // MAX_EXTEND (unenclosed level), just stop — the fill ends off-screen.
+  const probeY = waterLevel + 0.4;
+  let left = x0;
+  let right = x1;
+  for (let d = 0; d <= MAX_EXTEND; d += SAMPLE_STEP) {
+    if (inRock(x0 - d, probeY)) { left = x0 - d; break; }
+    left = x0 - d;
+  }
+  for (let d = 0; d <= MAX_EXTEND; d += SAMPLE_STEP) {
+    if (inRock(x1 + d, probeY)) { right = x1 + d; break; }
+    right = x1 + d;
+  }
+  left -= WALL_EXTEND_SAMPLES * SAMPLE_STEP;
+  right += WALL_EXTEND_SAMPLES * SAMPLE_STEP;
+
+  const count = Math.max(4, Math.round((right - left) / SAMPLE_STEP) + 1);
+  const xs: number[] = new Array(count);
+  for (let i = 0; i < count; i++) xs[i] = left + i * SAMPLE_STEP;
 
   return {
-    xs, restY,
-    deepY: deepest + DEEP_MARGIN,
-    offset: new Array(xs.length).fill(0),
-    vel: new Array(xs.length).fill(0),
+    xs,
+    restY: new Array(count).fill(waterLevel),
+    deepY: level.bounds.maxY + 4,
+    offset: new Array(count).fill(0),
+    vel: new Array(count).fill(0),
   };
 }

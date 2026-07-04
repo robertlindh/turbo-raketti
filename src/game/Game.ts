@@ -191,9 +191,9 @@ export class Game {
   private bullets: Bullet[] = [];
   private missiles: HomingMissile[] = [];
   private mines: MineEntity[] = [];
-  private waterZones: Point[][] = [];
   /** Animated water surface — null when the level has no pools. Game drives
-   *  it: update(dt) per frame, disturb() when a ship crosses the surface. */
+   *  it: update(dt) per frame, disturb() when a ship crosses the surface,
+   *  contains() for the drag physics. */
   private water: WaterLayer | null = null;
   /** Maps collider handles to whichever projectile owns them. Bullets and
    *  homing missiles both expose `alive`, `ownerIndex`, `color`, and `body`,
@@ -374,7 +374,6 @@ export class Game {
     const loaded = loadLevel(renderer, this.physics, this.worldLayer, level);
     this.water = loaded.water;
     this.camera.setLevelBounds(level.bounds);
-    this.waterZones = level.waterZones ?? [];
     // Keep a reference for the bot spawner — Game itself doesn't otherwise
     // need to know the full Level after init.
     this._cachedLevel = level;
@@ -1225,14 +1224,13 @@ export class Game {
       }
       p.specialPrev = specialNow;
 
-      // Water — if the ship's centre is inside any water polygon, drag it
+      // Water — if the ship's centre is under a pool's live surface, drag it
       // down: multiply velocity by 0.93 per tick (≈ 60% slowdown per sec).
-      if (this.waterZones.length > 0) {
+      // WaterLayer is the single source of truth so the slowdown zone always
+      // matches the rendered pool.
+      if (this.water) {
         const pos = ship.body.translation();
-        let inWater = false;
-        for (const poly of this.waterZones) {
-          if (pointInPolygon(pos.x, pos.y, poly)) { inWater = true; break; }
-        }
+        const inWater = this.water.contains(pos.x, pos.y);
 
         // Surface crossing — kick the spring surface at the entry point
         // (down on the way in, up on the way out) and throw a droplet
