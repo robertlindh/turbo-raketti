@@ -122,6 +122,10 @@ export function addScore(
     value: entry.value,
     loser: entry.loser,
     date: entry.date ?? new Date().toISOString(),
+    // Ghost-race telemetry — must be carried through, or the saved score
+    // has no replay and time-trial ghosts never get anything to chase.
+    gateTimes: entry.gateTimes,
+    replay: entry.replay,
   };
   board.push(fullEntry);
   board.sort(compare(mode));

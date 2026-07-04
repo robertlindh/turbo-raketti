@@ -236,12 +236,12 @@ let musicBufferPromise: Promise<AudioBuffer> | null = null;
 let musicVoice: AudioBufferSourceNode | null = null;
 let musicGain: GainNode | null = null;
 /** User-controlled on/off flag — read by startMenuMusic so toggling it
- *  while music is off keeps it off until the user opts back in. */
+ *  while music is off keeps it off until the user opts back in.
+ *  Defaults to OFF: music only plays if the user explicitly enabled it. */
 let musicEnabled = (() => {
   try {
-    const raw = localStorage.getItem("tr.music.enabled");
-    return raw === null ? true : raw === "1";
-  } catch { return true; }
+    return localStorage.getItem("tr.music.enabled") === "1";
+  } catch { return false; }
 })();
 
 /** Convert MIDI note number (60 = middle C) to Hz. */
